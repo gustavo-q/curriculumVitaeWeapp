@@ -22,7 +22,7 @@ function section (t) { console.log('\n=== ' + t + ' ===') }
 
 /* ---------------- wx 桩 ---------------- */
 const storage = {}
-const calls = { toast: [], modal: null, navigate: [], actionSheet: null, saved: [], unlinked: [] }
+const calls = { toast: [], modal: null, navigate: [], actionSheet: null, saved: [], unlinked: [], openedDocs: [], writtenFiles: [] }
 let modalAnswer = { confirm: true, content: '' }
 let chooseMediaFile = null
 /** 置 true 模拟用户在相册授权弹窗里点「不允许」 */
@@ -59,7 +59,9 @@ global.wx = {
   },
   getSetting: (o) => o.success({ authSetting: {} }),
   openSetting: (o) => o.success({ authSetting: {} }),
-  canvasToTempFilePath: (o) => o.success({ tempFilePath: '/tmp/out.png' }),
+  // PDF / Word 导出后的文档预览
+  openDocument: (o) => { calls.openedDocs.push({ filePath: o.filePath, fileType: o.fileType }); o.success && o.success() },
+  canvasToTempFilePath: (o) => o.success({ tempFilePath: '/tmp/out.' + (o.fileType || 'png') }),
   createSelectorQuery: () => ({
     in: function () { return this },
     select: function () { return this },
@@ -70,9 +72,31 @@ global.wx = {
   getFileSystemManager: () => ({
     mkdirSync () {},
     copyFileSync () {},
+    // PDF 导出会读回每页 JPEG 再拼装；给一张真实尺寸标记的桩数据
+    // （JPEG 头的真伪校验由 tools/check-pdf.cjs 用真实字节把关）
+    readFile (o) { o.success({ data: fakeJpegBuffer() }) },
+    writeFile (o) { calls.writtenFiles.push(o.filePath); o.success && o.success() },
     // 记录被回收的照片文件，用于验证「换照片/移除照片不留孤儿文件」
     unlink: (o) => { calls.unlinked.push(o.filePath); o.success && o.success() }
   })
+}
+
+/** 最小 JPEG 桩：SOI + APP0 + SOF0(1×1) + EOI，足以通过 jpegSize 校验 */
+function fakeJpegBuffer () {
+  const b = new Uint8Array(32)
+  let i = 0
+  b[i++] = 0xff; b[i++] = 0xd8 // SOI
+  b[i++] = 0xff; b[i++] = 0xe0 // APP0
+  b[i++] = 0; b[i++] = 16      // 段长 16（含自身 2 字节）：占 6..19
+  for (let j = 0; j < 14; j++) b[i++] = 0 // JFIF 段体（占位即可）
+  // 此处 i = 20，SOF0 从这里开始
+  b[i++] = 0xff; b[i++] = 0xc0
+  b[i++] = 0; b[i++] = 11      // 段长 11
+  b[i++] = 8                   // 精度
+  b[i++] = 0; b[i++] = 1       // 高 1
+  b[i++] = 0; b[i++] = 1       // 宽 1
+  b[i++] = 0xff; b[i++] = 0xd9 // EOI
+  return b.buffer
 }
 
 function makeFakeCanvas () {
@@ -746,6 +770,55 @@ const fieldOn = store.state.resume.baseFields.includes('email')
 edit.onToggleField(ev({ key: 'email' }))
 ok('字段开关切换生效', store.state.resume.baseFields.includes('email') === !fieldOn)
 
+/* ---- 面板渲染数据：UI 层必须同步（这是「点了开关颜色不变」的防线） ----
+ *
+ * emit() 对每个监听器 try/catch，refresh() 若抛异常会被静默吞掉；
+ * 而只断言 store 数据层的测试在这种情况下一律假通过。
+ * 真实故障正是如此：WXML 里写 activeFields.indexOf(item.key)（全项目
+ * WXML 唯一的方法调用），渲染层对方法调用异常时静默返回 undefined，
+ * `undefined >= 0` 恒为 false —— 开关的 class 永远算不出 'on'，
+ * 用户看到「点了开关，颜色怎么都不变」；而数据层一切正常、测试全绿。
+ * 现在 UI 用 JS 预计算的 baseRows[].on，WXML 只做布尔判断。
+ */
+{
+  /* 注意：全局的 model 在脚本后段才声明（TDZ），这里单独 require */
+  const M = require(path.join(ROOT, 'utils/model.js'))
+  const rows = edit.data.baseRows
+  ok('基本信息渲染行 baseRows 已下发（13 个字段）',
+    Array.isArray(rows) && rows.length === M.BASE_FIELDS.length,
+    '实际 ' + (rows ? rows.length : 'undefined'))
+  ok('baseRows 的 on 与 store 的 baseFields 完全一致',
+    rows.every((r) => r.on === store.state.resume.baseFields.includes(r.key)),
+    JSON.stringify(rows.filter((r) => r.on !== store.state.resume.baseFields.includes(r.key)).map((r) => r.key)))
+  ok('baseRows 带 label 与 key（WXML 不再需要任何方法调用）',
+    rows.every((r) => typeof r.label === 'string' && typeof r.key === 'string'))
+
+  const uiBefore = rows.find((r) => r.key === 'phone').on
+  edit.onToggleField(ev({ key: 'phone' }))
+  ok('点开关后 UI 层 baseRows[].on 同步翻转（否则颜色不变）',
+    edit.data.baseRows.find((r) => r.key === 'phone').on === !uiBefore)
+  edit.onToggleField(ev({ key: 'phone' })) // 还原，避免影响后续断言
+}
+
+/* ---- WXML 里不得再出现方法调用（防护回归） ----
+ * 渲染层对方法调用异常时静默返回 undefined，不报错、不白屏，
+ * 唯一的表现就是「这个绑定永远算不出期望值」——极难排查。
+ * 项目约定：WXML 表达式只做简单运算与属性访问，计算一律放 JS。
+ */
+{
+  const wxmlText = fs.readFileSync(path.join(ROOT, 'pages/edit/edit.wxml'), 'utf8')
+  /* 匹配 {{...}} 内的「标识符(」调用 */
+  const calls = []
+  const re = /\{\{([^}]*)\}\}/g
+  let m
+  while ((m = re.exec(wxmlText))) {
+    if (/[A-Za-z_$][\w$]*\s*\(/.test(m[1])) calls.push(m[1].trim())
+  }
+  ok('WXML 表达式里没有任何方法调用（渲染层会静默吞掉异常）',
+    calls.length === 0,
+    calls.length ? '发现：' + calls.slice(0, 3).join(' | ') : '')
+}
+
 /* ================================================================== */
 section('4. 编辑器：区块与条目增删改移')
 const secCount = store.state.resume.sections.length
@@ -1209,8 +1282,68 @@ ok('纸面点击收起浮层菜单', edit.data.menuOpen === false)
 ok('纸面点击仍能切到条目面板', edit.data.panel === 'item')
 
 /* ================================================================== */
+section('10b. 编辑器：导出 PDF / Word / 长图（收在「更多」菜单）')
 section('11. 编辑器：导出 PNG（走真实渲染器 + 桩 canvas）')
 ;(async () => {
+  /* ---- 编辑页导出组：PDF / Word / 长图都收在「更多」菜单里（导航栏不再有导出按钮） ---- */
+  const { exportBaseName } = require(path.join(ROOT, 'utils/export.js'))
+  // 导航栏不应再挂导出按钮（用户要求：导出别放标题上）
+  const editWxmlHead = require('fs').readFileSync(path.join(ROOT, 'pages/edit/edit.wxml'), 'utf8').split('\n').slice(0, 7).join('\n')
+  ok('编辑页导航栏不再挂导出按钮', editWxmlHead.indexOf('action=') < 0, editWxmlHead)
+  const fullWxml = require('fs').readFileSync(path.join(ROOT, 'pages/edit/edit.wxml'), 'utf8')
+  ok('菜单含「导出 PDF」入口', fullWxml.indexOf('onExportPdf') >= 0)
+  ok('菜单含「导出 Word」入口', fullWxml.indexOf('onExportWord') >= 0)
+  ok('菜单含「导出 PNG」入口', fullWxml.indexOf('onExportImage') >= 0)
+  ok('一级菜单是「导出 ›」入口（onOpenExportMenu）', fullWxml.indexOf('onOpenExportMenu') >= 0)
+
+  edit.onMenu()
+  await edit.onExportPdf()
+  ok('导出 PDF → 写入用户目录', calls.writtenFiles.some((f) => f.endsWith('.pdf')), JSON.stringify(calls.writtenFiles))
+  ok('导出 PDF → 打开文档预览', calls.openedDocs.some((d) => d.fileType === 'pdf'), JSON.stringify(calls.openedDocs))
+  ok('导出后关闭浮层并复位二级页', edit.data.menuOpen === false && edit.data.menuPage === '')
+
+  /* ---- 导出的二级菜单：主页只留「导出 ›」入口，四个产物在子页里 ---- */
+  edit.setData({ menuOpen: false, menuPage: '', panel: '' })
+  edit.onMenu()
+  ok('一级菜单不含导出产物行（入口收进二级）',
+    edit.data.menuPage === '' && /onOpenExportMenu/.test(fullWxml))
+  edit.onOpenExportMenu()
+  ok('点「导出」进入二级子页', edit.data.menuPage === 'export')
+  edit.onMenuBack()
+  ok('二级子页可返回主页', edit.data.menuPage === '')
+  edit.onOpenExportMenu()
+  edit.closeMenu()
+  ok('关闭浮层时二级页复位', edit.data.menuOpen === false && edit.data.menuPage === '')
+
+  await edit.onExportWord()
+  ok('导出 Word → 写入用户目录', calls.writtenFiles.some((f) => f.endsWith('.doc')))
+  ok('导出 Word → 打开文档预览', calls.openedDocs.some((d) => d.fileType === 'doc'))
+  ok('导出 Word 文件名来自简历名', calls.writtenFiles.some((f) => f.indexOf(exportBaseName(store.state.resume)) >= 0),
+    JSON.stringify(calls.writtenFiles))
+
+  await edit.onExportImage()
+  ok('导出长图 → 存相册', calls.saved.length >= 1, 'saved=' + calls.saved.length)
+  ok('导出结束后 exporting 复位', edit.data.exporting === false)
+
+  /* ---- 预览页：「导出 ▾」按钮 + ActionSheet，同样不含导航栏导出 ---- */
+  const previewExp = mount('pages/preview/preview.js', { id: store.state.resume.id })
+  const previewWxmlHead = require('fs').readFileSync(path.join(ROOT, 'pages/preview/preview.wxml'), 'utf8').split('\n').slice(0, 6).join('\n')
+  ok('预览页导航栏不再挂导出按钮', previewWxmlHead.indexOf('action=') < 0, previewWxmlHead)
+  previewExp.onExportMenu()
+  ok('导出按钮弹出 ActionSheet（4 项）', Array.isArray(calls.actionSheet && calls.actionSheet.itemList) && calls.actionSheet.itemList.length === 4,
+    JSON.stringify(calls.actionSheet && calls.actionSheet.itemList))
+  // 直接 await 各导出方法（ActionSheet 回调只是把它们派发出去，promise 在方法本身上）
+  await previewExp.onExportPdf()
+  ok('预览页导出 PDF → 打开文档预览', calls.openedDocs.filter((d) => d.fileType === 'pdf').length >= 2)
+  await previewExp.onExportWord()
+  ok('预览页导出 Word → 打开文档预览', calls.openedDocs.filter((d) => d.fileType === 'doc').length >= 2)
+  await previewExp.onExportImage()
+  ok('预览页导出长图 → 存相册', calls.saved.length >= 2)
+  previewExp.onCopyJSON()
+  ok('预览页复制 JSON 仍可用', typeof calls.clipboard === 'string')
+  ok('预览页导出结束后 exporting 复位', previewExp.data.exporting === false)
+
+  /* ================================================================== */
   const render = require(path.join(ROOT, 'utils/render.js'))
   const canvas = makeFakeCanvas()
   const ctx = canvas.getContext('2d')

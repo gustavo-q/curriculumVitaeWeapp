@@ -2,8 +2,6 @@
   title="{{title}}{{dirty ? ' ·' : ''}}"
   status-bar-height="{{statusBarHeight}}"
   bar-height="{{navBarHeight}}"
-  action="{{exporting ? '导出中' : '导出'}}"
-  bind:action="onExportImage"
 />
 
 <!-- ============ 工具栏（对应参考站顶栏：3 个入口 + 更多） ============
@@ -37,8 +35,14 @@
      底部会与编辑输入区抢空间，展开后还要滑动才能看到后面的项。 -->
 <view wx:if="{{menuOpen}}" class="menu-mask" bindtap="closeMenu"></view>
 <view wx:if="{{menuOpen}}" class="menu-pop" style="top:{{menuTop}}px">
-  <view class="menu-pop-head">更多</view>
+  <!-- 浮层头：二级页（导出）时标题换成「导出」并给出返回箭头 -->
+  <view class="menu-pop-head">
+    <text wx:if="{{menuPage === 'export'}}" class="menu-pop-back" catchtap="onMenuBack" hover-class="tap-hover">‹</text>
+    <text>{{menuPage === 'export' ? '导出' : '更多'}}</text>
+  </view>
   <scroll-view class="menu-pop-body" scroll-y>
+    <!-- ============ 一级：菜单主页 ============ -->
+    <block wx:if="{{menuPage !== 'export'}}">
     <!-- 撤销 / 重做：工具栏精简后收在这里。用 menu-row 而不是按钮，
          浮层里就不再出现「一排宽度不一的按钮」那种观感问题。
          不可用时给出降级灰与「无可撤销步骤」的说明，而不是点了没反应。 -->
@@ -59,9 +63,58 @@
     <view class="menu-divider"></view>
     <view class="menu-row" bindtap="onGoTemplates" hover-class="tap-hover-bg"><text>模板库</text><text class="menu-arrow">›</text></view>
     <view class="menu-row" bindtap="onGoPreview" hover-class="tap-hover-bg"><text>全屏预览</text><text class="menu-arrow">›</text></view>
+    <view class="menu-divider"></view>
+    <!-- 导出：四种产物（PDF / Word / 长图 / JSON）收进二级子页，
+         一级菜单里只留一个入口，避免主页被导出项淹没。 -->
+    <view class="menu-row" bindtap="onOpenExportMenu" hover-class="tap-hover-bg">
+      <view class="menu-row-main">
+        <text>导出</text>
+        <text class="menu-row-hint">PDF · Word · 长图 · JSON</text>
+      </view>
+      <text class="menu-arrow">›</text>
+    </view>
+    <view class="menu-divider"></view>
     <view class="menu-row" bindtap="onResumeName" hover-class="tap-hover-bg"><text>重命名简历</text><text class="menu-arrow">›</text></view>
-    <view class="menu-row" bindtap="onCopyJSON" hover-class="tap-hover-bg"><text>复制 JSON 备份</text><text class="menu-arrow">›</text></view>
     <view class="menu-row" bindtap="onGoHome" hover-class="tap-hover-bg"><text>我的简历（保存并返回）</text><text class="menu-arrow">›</text></view>
+    </block>
+
+    <!-- ============ 二级：导出子页 ============
+         每行右侧的说明告诉用户产物会落在哪里：PDF / Word 打开预览后可转发，
+         长图直接进相册，JSON 进剪贴板。导出中统一置灰（exporting 互斥）。 -->
+    <block wx:else>
+    <view class="menu-row {{exporting ? 'off' : ''}}" bindtap="onExportPdf" hover-class="tap-hover-bg">
+      <view class="menu-row-main">
+        <text>PDF（A4 · 逐页）</text>
+        <text wx:if="{{exporting}}" class="menu-row-hint">正在导出…</text>
+        <text wx:else class="menu-row-hint">生成后打开预览，可转发给电脑</text>
+      </view>
+      <text class="menu-arrow">›</text>
+    </view>
+    <view class="menu-row {{exporting ? 'off' : ''}}" bindtap="onExportWord" hover-class="tap-hover-bg">
+      <view class="menu-row-main">
+        <text>Word（可编辑）</text>
+        <text wx:if="{{exporting}}" class="menu-row-hint">正在导出…</text>
+        <text wx:else class="menu-row-hint">交给 Word / WPS 打开继续编辑</text>
+      </view>
+      <text class="menu-arrow">›</text>
+    </view>
+    <view class="menu-row {{exporting ? 'off' : ''}}" bindtap="onExportImage" hover-class="tap-hover-bg">
+      <view class="menu-row-main">
+        <text>PNG 长图</text>
+        <text wx:if="{{exporting}}" class="menu-row-hint">正在导出…</text>
+        <text wx:else class="menu-row-hint">2 倍高清，直接保存到相册</text>
+      </view>
+      <text class="menu-arrow">›</text>
+    </view>
+    <view class="menu-row {{exporting ? 'off' : ''}}" bindtap="onCopyJSON" hover-class="tap-hover-bg">
+      <view class="menu-row-main">
+        <text>JSON 备份</text>
+        <text wx:if="{{exporting}}" class="menu-row-hint">正在导出…</text>
+        <text wx:else class="menu-row-hint">复制到剪贴板，换设备粘贴导入</text>
+      </view>
+      <text class="menu-arrow">›</text>
+    </view>
+    </block>
   </scroll-view>
 </view>
 
@@ -268,15 +321,15 @@
     <!-- ---------- 基本信息 ---------- -->
     <block wx:elif="{{panel === 'base'}}">
       <view class="hint">每个字段右侧的开关决定它是否出现在简历上（对应参考站目录里的眼睛图标）。</view>
-      <!-- ★ 输入框必须套一层普通 view 来承担宽度，不能让 input 自己 flex:1。
-           input 在 focus 时是小程序的「原生组件」：层级最高，z-index 压不住它，
-           父级的 overflow 也裁不掉它，而且它的宽度由原生层自己算。
-           原来 input 直接 flex:1，聚焦后原生层按自己的宽度铺开，盖住了紧邻的
-           开关——真机上表现为「右侧开关点不了」，而开发者工具用 web 组件模拟
-           原生组件、不还原这个层级差异，所以工具里点得动。
-           宽度改由 .base-input-wrap 决定后，input 只剩「填满父容器」，
-           溢出无从发生；always-embed 再强制它聚焦时保持同层渲染，双重保险。 -->
-      <view wx:for="{{baseFields}}" wx:key="key" class="base-row {{activeFields.indexOf(item.key) < 0 ? 'off' : ''}}">
+      <!-- ★ 每行的「是否显示」用 JS 预计算好的 item.on，绝不在 WXML 里调方法。
+           之前写的是 activeFields.indexOf(item.key) —— 全项目 WXML 里唯一的方法
+           调用；渲染层对方法调用异常时静默返回 undefined，`undefined >= 0` 恒为
+           false，开关的 class 就永远算不出 'on'，表现为「点了开关颜色怎么都不
+           变」。样式面板的开关只用 style.headingCenter 这种简单属性访问，所以
+           一直正常。现在两处都退化为 item.on 的布尔判断（见 edit.js refresh）。
+           另：输入框套 .base-input-wrap 承担宽度，不让 input 自己 flex:1，
+           输入框不会因宽度计算铺开盖住紧邻的开关。 -->
+      <view wx:for="{{baseRows}}" wx:key="key" class="base-row {{item.on ? '' : 'off'}}">
         <text class="base-label">{{item.label}}</text>
         <view class="base-input-wrap">
           <input
@@ -293,7 +346,7 @@
             confirm-type="done"
           />
         </view>
-        <view class="switch {{activeFields.indexOf(item.key) >= 0 ? 'on' : ''}}" data-key="{{item.key}}" bindtap="onToggleField">
+        <view class="switch {{item.on ? 'on' : ''}}" data-key="{{item.key}}" bindtap="onToggleField">
           <view class="knob"></view>
         </view>
       </view>

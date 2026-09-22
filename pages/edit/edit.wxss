@@ -181,12 +181,25 @@ page {
 }
 .menu-pop-head {
   flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
   padding: 18rpx 24rpx 12rpx;
   font-size: 23rpx;
   font-weight: 700;
   color: var(--ink-3);
   letter-spacing: 1rpx;
   border-bottom: 1px solid #f2f4f7;
+}
+/* 二级页头部的返回箭头：命中区扩大到行高，避免只有字符本身可点 */
+.menu-pop-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: -6rpx 0 -6rpx -10rpx;
+  padding: 6rpx 14rpx 6rpx 10rpx;
+  font-size: 30rpx;
+  color: var(--ink-2);
 }
 .menu-pop-body { flex: 1; min-height: 0; }
 .menu-pop .menu-row { padding: 22rpx 24rpx; font-size: 27rpx; }

@@ -18,7 +18,16 @@ const { buildPaperVM } = require('../../utils/paper.js')
 const L = require('../../utils/layout.js')
 const onePage = require('../../utils/onePage.js')
 const { renderToContext } = require('../../utils/render.js')
-const { saveImageToAlbum, copyText, toast } = require('../../utils/export.js')
+const {
+  saveImageToAlbum,
+  copyText,
+  toast,
+  runExportTask,
+  exportPdfFromCanvas,
+  buildWordFile,
+  openExportedFile,
+  exportBaseName
+} = require('../../utils/export.js')
 const { resolvePhoto } = require('../../utils/avatars.js')
 const { PHOTO_PRESETS, PHOTO_SHAPES, PHOTO_BORDERS, PHOTO_RATIOS } = model
 
@@ -69,11 +78,18 @@ Page({
     /* ---- 顶部浮层菜单 ---- */
     menuOpen: false,
     menuTop: 96,
+    /*
+     * 浮层内的二级页：'' = 菜单主页；'export' = 导出子页。
+     * 子页共用同一个浮层（换标题 + 换列表 + 头部出现返回箭头），
+     * 不另开一层遮罩，返回和关闭的层级关系才不会乱。
+     */
+    menuPage: '',
 
     /* ---- 面板数据 ---- */
-    baseFields: model.BASE_FIELDS,
     baseInfo: {},
-    activeFields: [],
+    /* 基本信息每一行的渲染数据：{key,label,on}，on 由 refresh() 预计算。
+       WXML 只做 item.on 的布尔判断，不做任何方法调用（见 refresh 里的说明）。 */
+    baseRows: [],
     /*
      * 目录行：只承载区块标题与手势位移。
      * 条目明细不再进目录（那是「编辑」按钮的替代品），只保留在手势需要的
@@ -212,6 +228,25 @@ Page({
       canRedo: store.getters.canRedo(),
       baseInfo: Object.assign({}, resume.baseInfo),
       activeFields: (resume.baseFields || []).slice(),
+      /*
+       * baseRows 是基本信息面板渲染用的行数据：把「该字段是否显示」
+       * 直接算成布尔挂在每一行上。
+       *
+       * ★ 为什么不能在 WXML 里用 activeFields.indexOf(item.key) 判断：
+       *   那是全项目 WXML 里唯一的方法调用，而渲染层对方法调用的支持
+       *   是「异常时静默返回 undefined」（wcc 生成的 case 12 有
+       *   try/catch → _r = undefined），一旦求值失败，`undefined >= 0`
+       *   恒为 false —— 开关的 class 就永远算不出 'on'，用户看到的是
+       *   「点了开关，颜色怎么都不变」。样式面板的开关之所以正常，
+       *   正是它只用 `style.headingCenter` 这种简单属性访问。
+       *   在 JS 侧预计算后，WXML 退化为 `item.on ? ... : ...` 的简单
+       *   布尔判断，与正常工作的开关完全同一形态，不再依赖方法调用。
+       */
+      baseRows: model.BASE_FIELDS.map((f) => ({
+        key: f.key,
+        label: f.label,
+        on: (resume.baseFields || []).indexOf(f.key) >= 0
+      })),
       /*
        * 目录只显示标题。原来每行还挂着「N 个条目」与可点击的「编辑」按钮，
        * 现在整行可点即进编辑，因此这里不再下发 itemCount / items：
@@ -1306,6 +1341,61 @@ Page({
   /* ================= 导出与菜单 ================= */
 
   /**
+   * 导出 PDF：逐页 A4 渲染 → JPEG → utils/pdf.js 组装 → 写用户目录 →
+   * wx.openDocument 预览（可「用其他应用打开」转发给电脑 / 打印）。
+   *
+   * 与 PNG 导出共享同一个离屏画布：canvas 只有一个，导出期间以
+   * exporting 标志互斥，菜单里的三行导出也按它降级置灰。
+   */
+  onExportPdf () {
+    if (this.data.exporting) return Promise.resolve(false)
+    this.closeMenu()
+    this.commitPending()
+    this.setData({ exporting: true })
+    // 把 promise 返回出去：调用方（含回归脚本）await 到的是「导出真正结束」
+    return runExportTask('正在生成 PDF…', async () => {
+      const out = await exportPdfFromCanvas(() => this.getCanvas(), store.state.resume, exportBaseName(store.state.resume))
+      wx.hideLoading()
+      await openExportedFile(out.filePath, 'pdf')
+      toast('PDF 已导出（' + out.pages + ' 页）')
+    }).finally(() => this.setData({ exporting: false }))
+  },
+
+  /**
+   * 导出 Word(.doc)：按当前排版参数生成 Word HTML 写盘 → openDocument。
+   * Word / WPS 打开后可继续编辑、另存为 .docx。
+   */
+  onExportWord () {
+    if (this.data.exporting) return Promise.resolve(false)
+    this.closeMenu()
+    this.commitPending()
+    this.setData({ exporting: true })
+    return runExportTask('正在生成 Word…', async () => {
+      const out = await buildWordFile(store.state.resume, exportBaseName(store.state.resume))
+      wx.hideLoading()
+      await openExportedFile(out.filePath, 'doc')
+      toast('Word 已导出，可用 WPS / Word 编辑')
+    }).finally(() => this.setData({ exporting: false }))
+  },
+
+  /** 导出 PNG 长图（原导航栏「导出」按钮，现收进「更多」菜单） */
+  onExportImage () {
+    if (this.data.exporting) return Promise.resolve(false)
+    this.closeMenu()
+    this.commitPending()
+    this.setData({ exporting: true })
+    return runExportTask('正在生成图片…', async () => {
+      const { canvas, ctx } = await this.getCanvas()
+      const out = await renderToContext(ctx, canvas, store.state.resume, { scale: 2 })
+      const filePath = await this.toFile(canvas)
+      wx.hideLoading()
+      await saveImageToAlbum(filePath)
+      // 长简历会被画布上限强制降到 1 倍：如实告知，避免用户以为是「导出变糊了」
+      toast(out && out.limited ? '长图已保存（内容较长，已按画布上限降为 1 倍清晰度）' : '长图已保存到相册')
+    }).finally(() => this.setData({ exporting: false }))
+  },
+
+  /**
    * 顶部浮层菜单：开在「导航栏 + 工具栏」下方，一屏可见、点遮罩即关。
    * 放在顶部而不是底部面板，是因为菜单属于全局操作：底部会与编辑输入区
    * 抢空间，长列表还要再滚一次才能看到后面的项。
@@ -1318,7 +1408,17 @@ Page({
 
   closeMenu () {
     if (!this.data.menuOpen) return
-    this.setData({ menuOpen: false })
+    this.setData({ menuOpen: false, menuPage: '' })
+  },
+
+  /** 进入导出二级页；从主页跳转，不重开遮罩 */
+  onOpenExportMenu () {
+    this.setData({ menuPage: 'export' })
+  },
+
+  /** 二级页返回菜单主页 */
+  onMenuBack () {
+    this.setData({ menuPage: '' })
   },
 
   /** 浮层顶边 = 状态栏 + 导航栏 + 工具栏，再留 8px 间隙。
@@ -1353,33 +1453,6 @@ Page({
     this.closeMenu()
     this.commitPending()
     copyText(store.exportJSON(), 'JSON 已复制到剪贴板')
-  },
-
-  async onExportImage () {
-    if (this.data.exporting) return
-    this.commitPending()
-    this.setData({ exporting: true })
-    wx.showLoading({ title: '正在生成图片…', mask: true })
-    try {
-      const { canvas, ctx } = await this.getCanvas()
-      const out = await renderToContext(ctx, canvas, store.state.resume, { scale: 2 })
-      const filePath = await this.toFile(canvas)
-      wx.hideLoading()
-      await saveImageToAlbum(filePath)
-      // 长简历会被画布上限强制降到 1 倍：如实告知，避免用户以为是「导出变糊了」
-      toast(out && out.limited ? '长图已保存（内容较长，已按画布上限降为 1 倍清晰度）' : '长图已保存到相册')
-    } catch (err) {
-      wx.hideLoading()
-      // 用户主动取消（拒绝授权）不该报成「导出失败」——那会让人以为功能坏了
-      if (err && err.cancelled) {
-        toast('已取消保存')
-        return
-      }
-      console.error('[export] failed', err)
-      toast('导出失败：' + (err && err.message ? err.message : '未知错误'))
-    } finally {
-      this.setData({ exporting: false })
-    }
   },
 
   getCanvas () {

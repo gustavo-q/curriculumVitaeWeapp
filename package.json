@@ -10,7 +10,8 @@
     "check:geometry": "node tools/check-geometry.cjs",
     "check:layout": "node tools/check-editlayout.cjs",
     "check:indexlayout": "node tools/check-indexlayout.cjs",
-    "check:all": "node tools/check-static.cjs && node tools/check-package.cjs && node tools/check-logic.cjs && node tools/check-geometry.cjs && node tools/check-editlayout.cjs && node tools/check-indexlayout.cjs",
+    "check:pdf": "node tools/check-pdf.cjs",
+    "check:all": "node tools/check-static.cjs && node tools/check-package.cjs && node tools/check-logic.cjs && node tools/check-pdf.cjs && node tools/check-geometry.cjs && node tools/check-editlayout.cjs && node tools/check-indexlayout.cjs",
     "preview": "node tools/build-preview.cjs",
     "shot": "node tools/shot-edit.cjs"
   },

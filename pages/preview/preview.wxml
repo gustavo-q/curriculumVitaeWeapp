@@ -2,8 +2,6 @@
   title="{{title}}"
   status-bar-height="{{statusBarHeight}}"
   bar-height="{{navBarHeight}}"
-  action="{{exporting ? '导出中' : '存图片'}}"
-  bind:action="onExportImage"
 />
 
 <view class="bar">
@@ -12,9 +10,13 @@
     <text class="hint">A4 · 794 × 1123</text>
   </view>
   <!-- 顶栏操作是「就地次要操作」，按内容宽靠右排列（.btn-row-auto），
-       不与左侧页数信息抢宽度；间距走全局统一值 -->
+       不与左侧页数信息抢宽度；间距走全局统一值。
+       导出入口收在「导出 ▾」一个按钮里（ActionSheet 列出 PDF / Word /
+       长图 / JSON），顶栏不再被一排导出按钮占满。 -->
   <view class="bar-right btn-row btn-row-auto">
-    <view class="btn btn-sm" bindtap="onCopyJSON" hover-class="tap-hover">复制 JSON</view>
+    <view class="btn btn-sm {{exporting ? 'off' : ''}}" bindtap="onExportMenu" hover-class="tap-hover">
+      <text>{{exporting ? '导出中…' : '导出 ▾'}}</text>
+    </view>
     <view class="btn btn-sm btn-primary" bindtap="onEdit" hover-class="tap-hover">去编辑</view>
   </view>
 </view>

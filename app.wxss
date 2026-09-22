@@ -111,6 +111,13 @@ view, text, scroll-view, button, input, textarea, image, label {
   border-color: rgba(179, 38, 30, 0.28);
 }
 
+/* 导出进行中的降级态：视觉置灰 + 不可点（页面层还会用 exporting 再拦一道） */
+.btn.off {
+  color: var(--ink-4);
+  border-color: var(--line);
+  background: var(--surface);
+}
+
 /* ---------- 按钮行：并列按钮的唯一容器 ----------
  *
  * ★ 所有「一排按钮」都必须套 .btn-row，各页面不得再自定义按钮排列规则。

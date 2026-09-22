@@ -434,18 +434,19 @@ async function main () {
     ok('工具栏精简后每个入口足够宽（320px 下 ≥100px）', minCell >= 100,
       '320/' + tools.list.length + ' = ' + minCell)
 
-    /* ============ 5. 导航栏：标题真居中，且不挡住操作按钮 ============ */
-    console.log('\n[5] 导航栏：标题必须相对屏幕居中，且导出按钮仍可点')
+    /* ============ 5. 导航栏：标题真居中，且不挡住返回键 ============ */
+    console.log('\n[5] 导航栏：标题必须相对屏幕居中（导出已移入「更多」菜单/导出菜单，导航栏不再有操作按钮）')
     /*
      * 标题原先用 flex:1 + text-align:center，可居中线是「左返回键 ~ 右按钮」
-     * 之间而非屏幕中心；右侧还要为胶囊让位约 104px，实测标题偏左 72.5px，
-     * 且「导出 → 导出中」文字变长时标题还会抖 7px。
-     * 这里逐个屏宽量标题中心，并用命中测试确认操作按钮没被标题盖住。
+     * 之间而非屏幕中心；右侧还要为胶囊让位约 104px，实测标题偏左 72.5px。
+     * 绝对定位方案必须继续守住「真居中」——即使现在右侧通常没有按钮了，
+     * 仍要保证任何右侧内容（历史版本的 action）出现时不破坏居中。
+     * 这里用「空 action」与「长文字 action」两种夹具量标题中心。
      */
     const navCases = [[320, 224], [375, 279], [393, 297]]
     const navResults = []
     for (const [winW, mbLeft] of navCases) {
-      for (const actText of ['导出', '导出中']) {
+      for (const actText of ['', '导出中——一个较长的右侧文字']) {
         const r = await evalJs(`(() => {
           const winW = ${winW};
           const padR = Math.max(12, Math.round(winW - ${mbLeft}) + 8);
@@ -481,19 +482,23 @@ async function main () {
     ok('各屏宽下标题都相对屏幕居中（偏移 ≤1px）',
       navResults.every((r) => Math.abs(r.center - r.screen) <= 1),
       JSON.stringify(navResults.map((r) => (r.center - r.screen).toFixed(1))))
-    ok('标题不挡住导出按钮（按钮仍能被命中）',
-      navResults.every((r) => r.hitAction === 'navAction'),
+    ok('右侧有内容时它仍能被命中（不被标题盖住）',
+      navResults.filter((r) => r.actText).every((r) => r.hitAction === 'navAction'),
       JSON.stringify(navResults.map((r) => r.hitAction)))
     ok('标题不挡住返回键',
       navResults.every((r) => r.hitBack === 'navBack'),
       JSON.stringify(navResults.map((r) => r.hitBack)))
-    ok('导出按钮触控高度 ≥44px',
-      navResults.every((r) => r.actionH >= 44),
+    ok('右侧操作触控高度 ≥44px',
+      navResults.filter((r) => r.actText).every((r) => r.actionH >= 44),
       JSON.stringify(navResults.map((r) => Math.round(r.actionH))))
-    // 文字从「导出」变「导出中」时标题不能抖动
-    const jitter = navResults.filter((r) => r.actText === '导出中')[0].center -
-      navResults.filter((r) => r.actText === '导出')[0].center
-    ok('按钮文字变长时标题不抖动', Math.abs(jitter) < 0.5, 'jitter=' + jitter.toFixed(2) + 'px')
+    // 右侧文字变化时标题不能抖动（绝对定位不参与左右分配）——同一屏宽内比较
+    const jitterByWin = navCases.map(([winW]) => {
+      const empty = navResults.filter((r) => r.winW === winW && r.actText === '')[0]
+      const long = navResults.filter((r) => r.winW === winW && r.actText !== '')[0]
+      return long.center - empty.center
+    })
+    ok('按钮文字变长时标题不抖动', jitterByWin.every((j) => Math.abs(j) < 0.5),
+      JSON.stringify(jitterByWin.map((j) => j.toFixed(2))))
 
     /* ============ 6. 按钮格式统一性 ============
      *

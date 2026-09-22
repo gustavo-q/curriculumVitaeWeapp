@@ -12,7 +12,16 @@ const store = require('../../utils/store.js')
 const { buildThumbSample, normalizeResume, getTemplate } = require('../../utils/model.js')
 const { buildPaperVM } = require('../../utils/paper.js')
 const { paginateResume } = require('../../utils/layout.js')
-const { saveImageToAlbum, toast } = require('../../utils/export.js')
+const {
+  saveImageToAlbum,
+  copyText,
+  toast,
+  runExportTask,
+  exportPdfFromCanvas,
+  buildWordFile,
+  openExportedFile,
+  exportBaseName
+} = require('../../utils/export.js')
 
 const { renderToContext } = require('../../utils/render.js')
 
@@ -89,29 +98,57 @@ Page({
     }
   },
 
-  /** 导出 PNG 长图：走 canvas 渲染，与屏幕上同一套几何 */
-  async onExportImage () {
+  /** 「导出 ▾」按钮：ActionSheet 列出全部导出形态（对应编辑页「更多」里的导出组） */
+  onExportMenu () {
     if (this.data.exporting) return
+    wx.showActionSheet({
+      itemList: ['导出 PDF（A4）', '导出 Word（可编辑）', '导出 PNG 长图', '复制 JSON 备份'],
+      success: (res) => {
+        if (res.tapIndex === 0) this.onExportPdf()
+        else if (res.tapIndex === 1) this.onExportWord()
+        else if (res.tapIndex === 2) this.onExportImage()
+        else if (res.tapIndex === 3) this.onCopyJSON()
+      },
+      fail: () => {}
+    })
+  },
+
+  /** 导出 PDF：逐页 A4 → JPEG → 组装 → 写盘 → 打开预览（与编辑页同一实现） */
+  onExportPdf () {
+    if (this.data.exporting) return Promise.resolve(false)
     this.setData({ exporting: true })
-    wx.showLoading({ title: '正在生成图片…', mask: true })
-    try {
+    return runExportTask('正在生成 PDF…', async () => {
+      const out = await exportPdfFromCanvas(() => this.getCanvas(), this.resume, exportBaseName(this.resume))
+      wx.hideLoading()
+      await openExportedFile(out.filePath, 'pdf')
+      toast('PDF 已导出（' + out.pages + ' 页）')
+    }).finally(() => this.setData({ exporting: false }))
+  },
+
+  /** 导出 Word(.doc)：按当前排版生成 Word HTML，交给 Word / WPS */
+  onExportWord () {
+    if (this.data.exporting) return Promise.resolve(false)
+    this.setData({ exporting: true })
+    return runExportTask('正在生成 Word…', async () => {
+      const out = await buildWordFile(this.resume, exportBaseName(this.resume))
+      wx.hideLoading()
+      await openExportedFile(out.filePath, 'doc')
+      toast('Word 已导出，可用 WPS / Word 编辑')
+    }).finally(() => this.setData({ exporting: false }))
+  },
+
+  /** 导出 PNG 长图：走 canvas 渲染，与屏幕上同一套几何 */
+  onExportImage () {
+    if (this.data.exporting) return Promise.resolve(false)
+    this.setData({ exporting: true })
+    return runExportTask('正在生成图片…', async () => {
       const { canvas, ctx } = await this.getCanvas()
       const out = await renderToContext(ctx, canvas, this.resume, { scale: 2 })
       const filePath = await this.toFile(canvas)
       wx.hideLoading()
       await saveImageToAlbum(filePath)
       toast(out && out.limited ? '图片已保存（内容较长，已按画布上限降为 1 倍清晰度）' : '图片已保存到相册')
-    } catch (err) {
-      wx.hideLoading()
-      if (err && err.cancelled) {
-        toast('已取消保存')
-        return
-      }
-      console.error('[preview] export failed', err)
-      toast('导出失败：' + (err && err.message ? err.message : '未知错误'))
-    } finally {
-      this.setData({ exporting: false })
-    }
+    }).finally(() => this.setData({ exporting: false }))
   },
 
   getCanvas () {

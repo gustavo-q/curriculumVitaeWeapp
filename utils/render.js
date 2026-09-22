@@ -419,8 +419,68 @@ async function renderToContext (ctx, canvas, resume, opts) {
   return { width: w, height: h, cssHeight: cssH, scale, limited: plan.limited, layout: g }
 }
 
+/**
+ * 逐页渲染 + 每页导出 JPEG（PDF 导出用）。
+ *
+ * 分页口径与屏幕同源：
+ *   · 几何来自同一次 layoutResume()，页数来自同一个 paginateResume()；
+ *   · 屏幕上的纸面是一条连续流，页缝只是画在 y = p×A4_H 的视觉标记，
+ *     内容从不位移 —— 因此第 p 页 = 内容坐标 [p·A4_H, (p+1)·A4_H) 的部分，
+ *     把内容整体平移 -p·A4_H 后画进一张 A4 画布即可，页缝两侧的内容
+ *     与预览所见完全一致（被推挤的单元在几何里本来就已移到下一页范围）。
+ *   · 单页高度固定 A4_H，2 倍渲染是 1588×2246 像素，远低于长图那类
+ *     4096/1670 万像素的 canvas 上限，因此倍率不受画布约束。
+ *
+ * @param {object} ctx     2D 上下文（多页复用同一个 canvas）
+ * @param {object} canvas  canvas 节点（用于 createImage）
+ * @param {object} resume  简历数据
+ * @param {object} [opts]
+ * @param {number} [opts.scale=2]   每页渲染倍率（夹在 1~2）
+ * @param {function} opts.toFile    async (canvas, pageNo) => filePath
+ *                                  每页渲染完调用一次，返回该页文件路径
+ * @returns {Promise<{pages:number, scale:number, files:string[]}>}
+ */
+async function renderPagesToFiles (ctx, canvas, resume, opts) {
+  const o = opts || {}
+  if (typeof o.toFile !== 'function') throw new Error('renderPagesToFiles 需要 toFile 回调')
+  const scale = Math.max(1, Math.min(2, Number(o.scale) || 2))
+  const pag = L.paginateResume(resume)
+  const g = pag.layout
+  const S = g.pageStyle || g.style
+  const pages = pag.pages
+
+  const src = resolvePhoto(resume.personalPhoto)
+  const img = src ? await loadImage(canvas, src) : null
+
+  const files = []
+  for (let p = 0; p < pages; p++) {
+    canvas.width = Math.round(A4_W * scale)
+    canvas.height = Math.round(A4_H * scale)
+    ctx.setTransform(scale, 0, 0, scale, 0, 0)
+    ctx.clearRect(0, 0, A4_W, A4_H)
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, A4_W, A4_H)
+
+    ctx.save()
+    ctx.translate(0, -p * A4_H)
+    // 边框按整页内容高度画：只有第 1 页会画到顶部，最后一页画到底部
+    drawPaperBorder(ctx, S.resume, (p + 1) * A4_H)
+    if (g.layout === 'SINGLE') drawHead(ctx, g, img)
+    else drawSide(ctx, g, img)
+    for (const sec of g.sections) {
+      drawSectionTitle(ctx, sec, S.resume)
+      drawSectionBody(ctx, sec, S)
+    }
+    ctx.restore()
+
+    files.push(await o.toFile(canvas, p))
+  }
+  return { pages, scale, files }
+}
+
 module.exports = {
   renderToContext,
+  renderPagesToFiles,
   planScale,
   MAX_CANVAS_SIDE,
   MAX_CANVAS_AREA,
