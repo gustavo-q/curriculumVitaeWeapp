@@ -426,8 +426,23 @@ page {
 }
 .base-row.off { opacity: 0.5; }
 .base-label { flex: none; width: 130rpx; font-size: 25rpx; color: #5b6570; }
-.base-input {
+/*
+ * 宽度由这层普通 view 承担，input 只负责填满它。
+ *
+ * ★ 不能让 input 自己 flex:1：input 在 focus 时是小程序的原生组件
+ *   （见官方 native-component 文档：原生组件层级最高、z-index 压不住、
+ *   父级 overflow 裁不掉，且「工具上是用 web 组件模拟的，很多情况并不能
+ *   很好地还原真机的表现」）。宽度交给原生层自己算时，它会铺开盖住紧邻的
+ *   开关，真机上就是「右侧开关点不了」，而开发者工具里一切正常。
+ *   宽度改由普通 view 决定后，input 只剩 width:100%，溢出无从发生。
+ */
+.base-input-wrap {
   flex: 1;
+  min-width: 0;
+  display: flex;
+}
+.base-input {
+  width: 100%;
   min-width: 0;
   height: 72rpx;
   padding: 0 16rpx;
@@ -439,13 +454,21 @@ page {
 .ph { color: #b6bdc6; }
 
 /*
- * 开关：视觉尺寸保持 74×42rpx，但通过 ::after 把热区扩到 96rpx 见方。
+ * 开关：视觉尺寸保持 74×42rpx，但通过 ::after 把热区扩到约 94×90rpx。
  * 直接放大视觉尺寸会破坏与输入框的对齐，而且太笨重；
  * 透明伪元素扩热区是既不改观感、又能点得中的做法。
+ *
+ * ★ 热区不向左扩满：行的 gap 是 14rpx，左边留 6rpx 就够保住触控尺寸，
+ *   剩下的间隙不与输入框相接——输入框聚焦时是原生组件、层级最高，
+ *   热区一旦压到它下面就会被它吃掉，用户感觉「开关靠输入框那侧点不动」。
+ *   纵向照旧扩 24rpx，热区最终 94×90rpx（≈47×45px）仍高于 44px 下限。
+ * ★ z-index 让开关明确压在输入框之上（同层渲染下有效），
+ *   它与 always-embed 一起构成两道保险。
  */
 .switch {
   flex: none;
   position: relative;
+  z-index: 1;
   width: 74rpx;
   height: 42rpx;
   border-radius: 22rpx;
@@ -456,7 +479,7 @@ page {
 .switch::after {
   content: '';
   position: absolute;
-  left: -14rpx;
+  left: -6rpx;
   right: -14rpx;
   top: -24rpx;
   bottom: -24rpx;

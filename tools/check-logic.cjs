@@ -393,6 +393,39 @@ ok('目录行不再带条目明细', edit.data.dirRows.every((r) => r.items === 
   ok('没有照片时仍有「添加照片」占位可点（否则空简历进不去照片面板）',
     /data-photo-add="1"/.test(paper) && /data-photo-add="1"/.test(side))
 
+  /*
+   * 基本信息面板的输入框结构：真机专属故障的源码闸门。
+   *
+   * input 在 focus 时是小程序的原生组件（层级最高，z-index 压不住，
+   * 父级 overflow 也裁不掉它），而开发者工具是用 web 组件模拟的，
+   * 「很多情况并不能很好地还原真机的表现」。曾经 input 自己 flex:1，
+   * 聚焦后原生层铺开盖住右侧开关 —— 工具里点得动、真机点不了。
+   *
+   * 布局脚本能守住几何，但浏览器复刻不出原生组件的层级，因此这里再从
+   * 源码上钉死两件事：
+   *   ① input 外面必须有一层普通 view 承担宽度（.base-input-wrap）；
+   *   ② input 必须带 always-embed，强制聚焦时保持同层渲染。
+   * 少了任何一条，就可能退回「工具正常、真机点不了」的状态。
+   */
+  const baseBlock = (() => {
+    /* 用面板分隔注释定位，不能用 "panel === 'base'" ——
+       标题栏的 panel-title 分支里也有一处同名判断，会先命中它。 */
+    const start = wxml.indexOf('<!-- ---------- 基本信息 ---------- -->')
+    return start < 0 ? '' : wxml.slice(start, wxml.indexOf('</block>', start))
+  })()
+  ok('基本信息面板仍用 .base-input-wrap 包裹 input（宽度不由原生 input 承担）',
+    /<view class="base-input-wrap">[\s\S]*?<input/.test(baseBlock),
+    baseBlock ? baseBlock.slice(0, 120).replace(/\s+/g, ' ') : '未找到基本信息分支')
+  ok('基本信息面板的 input 带 always-embed（强制聚焦时同层渲染）',
+    /<input[\s\S]*?always-embed[\s\S]*?\/>/.test(baseBlock))
+  /*
+   * input 自己 class 仍是 base-input（视觉样式），宽度交给外层 view。
+   * 这条守住「宽度不由 input 自身 flex 决定」——配合布局脚本里
+   * flex-grow 为 0 的断言，覆盖结构与样式两侧。
+   */
+  ok('input 的 class 保持 base-input，宽度责任在外层包裹层',
+    /<input[\s\S]*?class="base-input"[\s\S]*?\/>/.test(baseBlock))
+
   // 纸面点击 → 面板：直接跑 onPick，确认两条路径都能落到正确的面板
   const target = store.state.resume.sections[0]
   edit.onPick({ detail: { base: 'name' } })

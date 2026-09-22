@@ -52,8 +52,29 @@ function pageCss (withFix) {
 }
 
 /** 按 edit.wxml 的结构搭一份等价 DOM（去掉 wx: 语法，保留关键层级与类名） */
-function buildHtml (withFix, panelOpen, menuOpen) {
+function buildHtml (withFix, panelOpen, menuOpen, opts) {
+  const o = opts || {}
   const paperH = 1123 * 0.45 * 3 // 三页纸，制造「内容很长」的极端情况
+  /*
+   * 基本信息面板的结构必须与 edit.wxml 严格一致：
+   *   .base-row > (.base-label + .base-input-wrap > input.base-input + .switch > .knob)
+   * 宽度由 .base-input-wrap 这层普通 view 承担，input 只填满它 —— 这正是
+   * 「input 聚焦时是原生组件、会把开关盖住」那个真机问题的修复结构，
+   * 因此这里复刻它，并用命中测试守住不许回退。
+   */
+  const BASE_FIELDS = ['姓名', '性别', '年龄', '学历', '电话', '邮箱', '求职意向', '现居城市', '工作年限', '出生日期']
+  const baseRows = BASE_FIELDS.map((label, i) => `
+        <div class="base-row${i > 5 ? ' off' : ''}" id="baseRow${i}">
+          <span class="base-label">${label}</span>
+          <div class="base-input-wrap" id="baseWrap${i}"><input class="base-input" id="baseInput${i}" value="值${i}" /></div>
+          <div class="switch${i > 5 ? '' : ' on'}" id="baseSw${i}"><div class="knob" id="baseKnob${i}"></div></div>
+        </div>`).join('')
+  const panelTitle = o.base ? '基本信息' : '目录'
+  const panelInner = o.base
+    ? `<div class="hint">每个字段右侧的开关决定它是否出现在简历上（对应参考站目录里的眼睛图标）。</div>${baseRows}`
+    : `<div class="hint">点标题进入编辑 · 长按拖动排序 · 左滑可隐藏或删除</div>
+        ${Array.from({ length: 12 }).map((_, i) => `<div class="dir-row" id="dirRow${i}"><div class="dir-acts" id="acts${i}"><div class="act act-toggle" id="toggleBtn${i}">隐藏</div><div class="act act-del" id="delBtn${i}">删除</div></div><div class="dir-face"><span class="dir-title ellipsis">区块 ${i + 1}</span><span class="dir-grip">⠿</span></div></div>`).join('')}
+        <div class="btn btn-primary panel-add" id="addBtn">＋ 新增区块</div>`
   return `<!doctype html><html><head><meta charset="utf-8"><style>
   html,body{margin:0;padding:0;height:100%;overflow:hidden;}
   *{box-sizing:border-box;}
@@ -78,11 +99,9 @@ function buildHtml (withFix, panelOpen, menuOpen) {
       <div style="height:20px"></div>
     </div>
     ${panelOpen ? `<div class="panel" id="panel">
-      <div class="panel-head"><span class="panel-title">目录</span><span class="panel-close" id="closeBtn">收起</span></div>
+      <div class="panel-head"><span class="panel-title">${panelTitle}</span><span class="panel-close" id="closeBtn">收起</span></div>
       <div class="panel-body" id="panelBody" style="overflow-y:auto">
-        <div class="hint">点标题进入编辑 · 长按拖动排序 · 左滑可隐藏或删除</div>
-        ${Array.from({ length: 12 }).map((_, i) => `<div class="dir-row" id="dirRow${i}"><div class="dir-acts" id="acts${i}"><div class="act act-toggle" id="toggleBtn${i}">隐藏</div><div class="act act-del" id="delBtn${i}">删除</div></div><div class="dir-face"><span class="dir-title ellipsis">区块 ${i + 1}</span><span class="dir-grip">⠿</span></div></div>`).join('')}
-        <div class="btn btn-primary panel-add" id="addBtn">＋ 新增区块</div>
+        ${panelInner}
       </div>
     </div>` : ''}
     ${menuOpen ? `<div class="menu-mask" id="menuMask"></div><div class="menu-pop" id="menuPop" style="top:104px">
@@ -601,6 +620,133 @@ async function main () {
     ok('按内容宽排列时按钮宽度贴合文字（不被强行拉满整宽）',
       btnCases.auto.every((b) => b.w < 160),
       JSON.stringify(btnCases.auto.map((b) => Math.round(b.w))))
+
+    /* ============ 7. 基本信息面板：右侧开关必须点得中 ============
+     *
+     * 这是一个真机专属故障的回归闸门。
+     *
+     * 症状：开发者工具里开关点得动，装到手机上「基本信息」每行右侧的开关点不了。
+     * 根因：input 在 focus 时是小程序的「原生组件」（官方 native-component 文档：
+     *   原生组件层级最高、z-index 压不住、父级 overflow 裁不掉），而且
+     *   「在工具上原生组件是用 web 组件模拟的，很多情况并不能很好地还原真机」。
+     *   原来 input 自己 flex:1 承担宽度，聚焦后原生层按自己的宽度铺开盖住开关。
+     * 修复：宽度改由普通 view（.base-input-wrap）承担，input 只 width:100%，
+     *   并加 always-embed 强制聚焦时同层渲染；开关热区不再向左侵入输入框。
+     *
+     * 这里能守住的：结构（宽度不由 input 自己 flex 决定）、热区尺寸、命中测试。
+     * 浏览器复刻不出原生组件的层级，因此这几条是「真机问题的代理断言」，
+     * 真正回到真机上仍应再点一次确认。
+     */
+    console.log('\n[7] 基本信息面板：右侧开关的结构、热区与命中')
+    await load(buildHtml(true, true, false, { base: true }))
+    /*
+     * 面板可视高度约 8 行，字段有 10 个。elementFromPoint 只能命中视口内的
+     * 元素，因此分两次量：先量顶部，再把面板滚到底量其余行。
+     * 这样 10 行（含末尾几个 off 状态）全都被覆盖，而不是只测看得见的前几行。
+     */
+    const measureBase = (scrollToBottom) => evalJs(`(() => {
+      const body = document.getElementById('panelBody');
+      if (${scrollToBottom}) body.scrollTop = body.scrollHeight;
+      const rows = Array.from(document.querySelectorAll('.base-row')).map((row, i) => {
+        const sw = row.querySelector('.switch');
+        const input = row.querySelector('.base-input');
+        const wrap = row.querySelector('.base-input-wrap');
+        const rr = row.getBoundingClientRect();
+        const sr = sw.getBoundingClientRect();
+        const ir = input.getBoundingClientRect();
+        const wr = wrap.getBoundingClientRect();
+        /* ::after 是热区，getBoundingClientRect 量不到伪元素，用计算样式的四向偏移换算 */
+        const af = getComputedStyle(sw, '::after');
+        const hit = (x, y) => { const el = document.elementFromPoint(x, y);
+          if (!el) return null;
+          const s = el.closest ? el.closest('.switch') : null;
+          return s ? (s.id || 'switch') : (el.id || el.className || el.tagName); };
+        const cx = sr.left + sr.width / 2;
+        return {
+          i,
+          /* 这一行是否真的落在面板可视区内（否则命中测试无意义） */
+          visible: sr.top >= rr.top - 1 && sr.bottom <= body.getBoundingClientRect().bottom + 1 &&
+                   sr.top >= body.getBoundingClientRect().top - 1,
+          rowH: rr.height,
+          swW: sr.width, swH: sr.height,
+          /* 热区矩形 = 开关矩形 + ::after 的四向偏移 */
+          hotW: sr.width + Math.abs(parseFloat(af.left)) + Math.abs(parseFloat(af.right)),
+          hotH: sr.height + Math.abs(parseFloat(af.top)) + Math.abs(parseFloat(af.bottom)),
+          afLeft: af.left,
+          inputRight: ir.right, wrapRight: wr.right, swLeft: sr.left,
+          inputOverlapsSwitch: ir.right > sr.left + 0.5,
+          /* 探针一律取开关水平中心：热区在这里最完整，纵向也扩得最远 */
+          hitCenter: hit(cx, sr.top + sr.height / 2),
+          hitHotRight: hit(cx + 6, sr.top + sr.height / 2),
+          hitHotTop: hit(cx, sr.top - 10),
+          hitHotBottom: hit(cx, sr.bottom + 10),
+          hitInput: (() => { const el = document.elementFromPoint(ir.left + 20, ir.top + ir.height / 2);
+            return el ? (el.id || el.tagName) : null; })()
+        };
+      });
+      return {
+        rows,
+        inputFlexGrow: getComputedStyle(document.querySelector('.base-input')).flexGrow,
+        wrapFlexGrow: getComputedStyle(document.querySelector('.base-input-wrap')).flexGrow,
+        inputWidth: getComputedStyle(document.querySelector('.base-input')).width,
+        panel: (() => { const p = document.getElementById('panel').getBoundingClientRect();
+          return { top: p.top, bottom: p.bottom, h: p.height }; })(),
+        vh: window.innerHeight
+      };
+    })()`)
+
+    const top = await measureBase(false)
+    const bottom = await measureBase(true)
+    /* 合并两次测量，只保留真正可见过的行 */
+    const seen = new Map()
+    for (const r of top.rows.concat(bottom.rows)) {
+      if (r.visible && !seen.has(r.i)) seen.set(r.i, r)
+    }
+    const baseSw = { ...top, rows: [...seen.values()].sort((a, b) => a.i - b.i) }
+    console.log('  实测：' + JSON.stringify({
+      inputFlexGrow: baseSw.inputFlexGrow,
+      wrapFlexGrow: baseSw.wrapFlexGrow,
+      inputWidth: baseSw.inputWidth,
+      covered: baseSw.rows.map((r) => r.i),
+      sample: baseSw.rows.slice(0, 2)
+    }))
+    ok('基本信息面板在视口内可见', baseSw.panel.top >= 0 && baseSw.panel.bottom <= baseSw.vh + 1,
+      JSON.stringify(baseSw.panel))
+    /* 覆盖度：至少要量到面板里的绝大多数行，否则断言形同虚设 */
+    ok('开关命中测试覆盖了面板里的绝大多数行（≥8 行）',
+      baseSw.rows.length >= 8, '覆盖 ' + baseSw.rows.length + ' 行：' + baseSw.rows.map((r) => r.i).join(','))
+    /* 结构：宽度责任在普通 view 上，input 不自己撑宽 —— 这是修复的核心 */
+    ok('输入框宽度由 .base-input-wrap 承担（input 自身 flex-grow 为 0）',
+      baseSw.inputFlexGrow === '0' && baseSw.wrapFlexGrow === '1',
+      'input.flexGrow=' + baseSw.inputFlexGrow + ' wrap.flexGrow=' + baseSw.wrapFlexGrow)
+    ok('输入框不再溢出到开关所在区域',
+      baseSw.rows.every((r) => !r.inputOverlapsSwitch),
+      JSON.stringify(baseSw.rows.map((r) => r.inputOverlapsSwitch)))
+    /* 命中：开关视觉中心必须命中开关本身 */
+    ok('每个开关的视觉中心都能被点到',
+      baseSw.rows.every((r) => r.hitCenter === 'baseSw' + r.i),
+      JSON.stringify(baseSw.rows.map((r) => r.hitCenter)))
+    ok('开关热区向右扩展后仍命中开关',
+      baseSw.rows.every((r) => r.hitHotRight === 'baseSw' + r.i),
+      JSON.stringify(baseSw.rows.map((r) => r.hitHotRight)))
+    ok('开关热区向上扩展后仍命中开关',
+      baseSw.rows.every((r) => r.hitHotTop === 'baseSw' + r.i),
+      JSON.stringify(baseSw.rows.map((r) => r.hitHotTop)))
+    ok('开关热区向下扩展后仍命中开关',
+      baseSw.rows.every((r) => r.hitHotBottom === 'baseSw' + r.i),
+      JSON.stringify(baseSw.rows.map((r) => r.hitHotBottom)))
+    ok('开关热区达到 44px 触控下限',
+      baseSw.rows.every((r) => r.hotW >= 44 && r.hotH >= 44),
+      JSON.stringify(baseSw.rows.map((r) => ({ w: Math.round(r.hotW), h: Math.round(r.hotH) }))))
+    /* 热区不得向左侵入输入框：左扩必须小于行内 gap（14rpx = 7px），
+       否则那块热区会落在 input 下面，被原生层吃掉。 */
+    ok('开关热区不向左侵入输入框（左扩小于行内 gap）',
+      baseSw.rows.every((r) => -parseFloat(r.afLeft) < 7),
+      JSON.stringify(baseSw.rows.map((r) => r.afLeft)))
+    /* 修好开关不能把输入框弄坏 */
+    ok('输入框自身仍可命中（修开关没有牺牲输入）',
+      baseSw.rows.every((r) => /baseInput/.test(String(r.hitInput))),
+      JSON.stringify(baseSw.rows.map((r) => r.hitInput)))
 
     console.log('\n==============================')
     console.log('通过 ' + pass + ' 项，失败 ' + fail + ' 项')

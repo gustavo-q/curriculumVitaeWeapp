@@ -268,20 +268,31 @@
     <!-- ---------- 基本信息 ---------- -->
     <block wx:elif="{{panel === 'base'}}">
       <view class="hint">每个字段右侧的开关决定它是否出现在简历上（对应参考站目录里的眼睛图标）。</view>
+      <!-- ★ 输入框必须套一层普通 view 来承担宽度，不能让 input 自己 flex:1。
+           input 在 focus 时是小程序的「原生组件」：层级最高，z-index 压不住它，
+           父级的 overflow 也裁不掉它，而且它的宽度由原生层自己算。
+           原来 input 直接 flex:1，聚焦后原生层按自己的宽度铺开，盖住了紧邻的
+           开关——真机上表现为「右侧开关点不了」，而开发者工具用 web 组件模拟
+           原生组件、不还原这个层级差异，所以工具里点得动。
+           宽度改由 .base-input-wrap 决定后，input 只剩「填满父容器」，
+           溢出无从发生；always-embed 再强制它聚焦时保持同层渲染，双重保险。 -->
       <view wx:for="{{baseFields}}" wx:key="key" class="base-row {{activeFields.indexOf(item.key) < 0 ? 'off' : ''}}">
         <text class="base-label">{{item.label}}</text>
-        <input
-          class="base-input"
-          value="{{baseInfo[item.key]}}"
-          placeholder="未填写"
-          placeholder-class="ph"
-          data-scope="base"
-          data-key="{{item.key}}"
-          focus="{{focusKey === item.key}}"
-          bindinput="onInput"
-          bindblur="onBlur"
-          confirm-type="done"
-        />
+        <view class="base-input-wrap">
+          <input
+            class="base-input"
+            value="{{baseInfo[item.key]}}"
+            placeholder="未填写"
+            placeholder-class="ph"
+            data-scope="base"
+            data-key="{{item.key}}"
+            focus="{{focusKey === item.key}}"
+            always-embed
+            bindinput="onInput"
+            bindblur="onBlur"
+            confirm-type="done"
+          />
+        </view>
         <view class="switch {{activeFields.indexOf(item.key) >= 0 ? 'on' : ''}}" data-key="{{item.key}}" bindtap="onToggleField">
           <view class="knob"></view>
         </view>
