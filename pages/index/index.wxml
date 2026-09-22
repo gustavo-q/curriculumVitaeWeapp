@@ -1,0 +1,67 @@
+<nav-bar title="简历制作" back="{{false}}" status-bar-height="{{statusBarHeight}}" bar-height="{{navBarHeight}}" />
+
+<view class="hero">
+  <view class="hero-title">我的简历</view>
+  <view class="hero-sub">共 {{drafts.length}} 份 · 全部保存在本机</view>
+  <view class="btn-grid hero-grid">
+    <view class="btn btn-primary btn-wide" hover-class="tap-hover" bindtap="onCreate">＋ 新建简历</view>
+    <view class="btn hero-btn-ghost" hover-class="tap-hover" bindtap="onImport">导入</view>
+    <view class="btn hero-btn-ghost" hover-class="tap-hover" bindtap="onBackupAll">备份全部</view>
+  </view>
+  <view class="hero-links">
+    <view class="hero-link" hover-class="tap-hover" bindtap="onTemplates">模板库 ›</view>
+  </view>
+</view>
+
+<view class="body">
+  <view wx:if="{{!drafts.length}}" class="empty card">
+    <view class="empty-title">还没有简历</view>
+    <view class="empty-desc">新建一份示例简历，直接改内容就能用。</view>
+    <view class="empty-acts btn-row">
+      <view class="btn btn-primary" bindtap="onCreate" hover-class="tap-hover">新建示例简历</view>
+      <view class="btn" bindtap="onCreateBlank" hover-class="tap-hover">空白简历</view>
+    </view>
+  </view>
+
+  <!-- ★ 整张卡片即入口，卡片正面不再放任何按钮：
+       点击 → 进编辑器；长按 → 弹出预览 / 复制 / 删除菜单。
+       两点都收敛到卡片本身，卡片右侧不再被按钮占据，
+       标题与「N 个区块」有了完整的显示宽度。 -->
+  <view wx:else class="grid">
+    <view
+      wx:for="{{drafts}}"
+      wx:key="id"
+      class="card item"
+      data-id="{{item.id}}"
+      bindtouchstart="onCardTouchStart"
+      bindtouchmove="onCardTouchMove"
+      bindtouchend="onCardTouchEnd"
+      bindtouchcancel="onCardTouchCancel"
+      hover-class="card-hover">
+      <view class="item-face">
+        <view class="thumb">
+          <view class="thumb-scale" style="transform:translateX(-50%) scale({{thumbScale}})">
+            <resume-paper vm="{{item.vm}}" />
+          </view>
+          <view wx:if="{{item.isCurrent}}" class="cur">编辑中</view>
+        </view>
+        <view class="meta">
+          <view class="meta-title ellipsis">{{item.name}}</view>
+          <view class="meta-sub">
+            <text class="tag tag-brand">{{item.templateName}}</text>
+            <text class="small muted">{{item.sectionCount}} 个区块 · {{item.time}}</text>
+          </view>
+          <view class="meta-hint">长按可预览、复制、删除</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 破坏性操作保持「按内容宽 + 居中」，不抢视觉焦点；
+       但仍走统一的按钮行容器，间距不再页面自定 -->
+  <view wx:if="{{drafts.length}}" class="more btn-row btn-row-auto btn-row-center">
+    <view class="btn btn-sm btn-danger" bindtap="onClearAll" hover-class="tap-hover">清空全部简历</view>
+  </view>
+</view>
+
+<view class="safe-bottom" />

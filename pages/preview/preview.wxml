@@ -1,0 +1,32 @@
+<nav-bar
+  title="{{title}}"
+  status-bar-height="{{statusBarHeight}}"
+  bar-height="{{navBarHeight}}"
+  action="{{exporting ? '导出中' : '存图片'}}"
+  bind:action="onExportImage"
+/>
+
+<view class="bar">
+  <view class="bar-left">
+    <text class="pages {{pages > 1 ? 'multi' : ''}}">共 {{pages}} 页</text>
+    <text class="hint">A4 · 794 × 1123</text>
+  </view>
+  <!-- 顶栏操作是「就地次要操作」，按内容宽靠右排列（.btn-row-auto），
+       不与左侧页数信息抢宽度；间距走全局统一值 -->
+  <view class="bar-right btn-row btn-row-auto">
+    <view class="btn btn-sm" bindtap="onCopyJSON" hover-class="tap-hover">复制 JSON</view>
+    <view class="btn btn-sm btn-primary" bindtap="onEdit" hover-class="tap-hover">去编辑</view>
+  </view>
+</view>
+
+<scroll-view class="stage" scroll-y>
+  <view class="stage-inner" style="height:{{paperBoxH * zoom}}px">
+    <view class="zoom-wrap" style="transform:scale({{zoom}})">
+      <resume-paper vm="{{vm}}" seams="{{seams}}" />
+    </view>
+  </view>
+  <view style="height:60rpx"></view>
+</scroll-view>
+
+<!-- 导出用的离屏画布：尺寸由渲染器按导出倍率设定 -->
+<canvas type="2d" id="exportCanvas" class="export-canvas"></canvas>

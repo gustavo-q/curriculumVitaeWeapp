@@ -1,0 +1,57 @@
+<nav-bar title="模板库" status-bar-height="{{statusBarHeight}}" bar-height="{{navBarHeight}}" />
+
+<view class="page-head">
+  <view class="page-head-inner">
+    <view class="head-title">选一套模板</view>
+    <view class="head-desc">{{list.length}} 套模板 · 换模板不改变已填内容</view>
+  </view>
+</view>
+
+<scroll-view class="cats" scroll-x enable-flex>
+  <view
+    wx:for="{{cats}}"
+    wx:key="*this"
+    class="cat {{activeCat === item ? 'on' : ''}}"
+    data-cat="{{item}}"
+    bindtap="onCat"
+    hover-class="tap-hover"
+  >{{item}}</view>
+</scroll-view>
+
+<view class="grid">
+  <!-- 空状态：分类由模板 tags 派生，正常不会为空；保底避免整片空白像加载失败 -->
+  <view wx:if="{{emptyCat}}" class="cat-empty">
+    <view class="cat-empty-title">该分类下暂无模板</view>
+    <view class="cat-empty-sub">试试「全部」，或换一个分类</view>
+  </view>
+
+  <block wx:for="{{list}}" wx:key="id">
+    <!-- 整卡本身没有 tap 处理器，hover 只应作用于真正可点的缩略图与按钮，
+         否则点内部按钮时会连带整卡一起变淡，形成重复反馈。 -->
+    <view wx:if="{{item.match}}" class="tpl-card">
+      <view class="thumb-wrap" data-id="{{item.id}}" bindtap="onPreview" hover-class="tap-hover">
+        <view class="thumb-scale" style="transform:translateX(-50%) scale({{thumbScale}})">
+          <resume-paper vm="{{item.vm}}" />
+        </view>
+        <view wx:if="{{currentId === item.id}}" class="cur-badge">使用中</view>
+        <view class="thumb-mask"><text>点击预览</text></view>
+      </view>
+      <view class="tpl-meta">
+        <view class="tpl-title-row">
+          <text class="tpl-name">{{item.name}}</text>
+          <text class="tpl-layout">{{item.layoutLabel}}</text>
+        </view>
+        <view class="tpl-desc">{{item.desc}}</view>
+        <view class="tpl-tags">
+          <text wx:for="{{item.tags}}" wx:for-item="tag" wx:key="*this" class="tag">{{tag}}</text>
+        </view>
+        <view class="tpl-acts btn-row">
+          <view class="btn btn-sm btn-primary" data-id="{{item.id}}" catchtap="onUse" hover-class="tap-hover">用此模板</view>
+          <view class="btn btn-sm" data-id="{{item.id}}" catchtap="onNewWith" hover-class="tap-hover">新建一份</view>
+        </view>
+      </view>
+    </view>
+  </block>
+</view>
+
+<view class="safe-bottom" />

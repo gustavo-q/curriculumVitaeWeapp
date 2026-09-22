@@ -1,0 +1,104 @@
+.hero {
+  padding: 26rpx 28rpx 30rpx;
+  background: linear-gradient(140deg, #26557f, #16334f);
+  color: #fff;
+}
+.hero-title { font-size: 44rpx; font-weight: 700; letter-spacing: 2rpx; }
+.hero-sub { margin-top: 8rpx; font-size: 24rpx; color: rgba(255, 255, 255, 0.78); }
+/*
+ * 按钮排列全部交给全局 .btn-grid / .btn-row（app.wxss 是唯一来源），
+ * 这里只保留与 hero 相关的定位和配色。
+ */
+.hero-grid { margin-top: 26rpx; }
+.hero-btn-ghost {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.24);
+  color: #fff;
+}
+.hero-links { display: flex; gap: 8rpx; margin-top: 12rpx; margin-left: -12rpx; }
+/*
+ * 次级入口（模板库）用 min-height 撑出热区。
+ * 原来只有 font-size、没有任何内边距，320px 屏上实测仅 17.1px 高，
+ * 是最难点击的元素；视觉上仍保持轻量的文字链观感。
+ */
+.hero-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 80rpx;
+  padding: 0 12rpx;
+  font-size: 26rpx;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.body { padding: 24rpx 28rpx 40rpx; }
+.empty { padding: 60rpx 40rpx; text-align: center; }
+.empty-title { font-size: 32rpx; font-weight: 600; }
+.empty-desc { margin-top: 10rpx; font-size: 25rpx; color: var(--ink-3); }
+/* 排列交给全局 .btn-row，这里只给上边距 */
+.empty-acts { margin-top: 28rpx; }
+
+.grid { display: flex; flex-direction: column; gap: 24rpx; }
+
+/* ---------- 简历卡片：点击进编辑 / 长按菜单 ----------
+ *
+ * 卡片正面不挂任何按钮：点击进编辑器，长按弹出「预览 / 复制 / 删除」。
+ * 卡片本身只做普通布局容器，不再承担任何手势位移。
+ */
+.item {
+  position: relative;
+  display: block;
+  padding: 0;
+  background: #fff;
+}
+.item-face {
+  position: relative;
+  display: flex;
+  gap: 20rpx;
+  padding: 20rpx;
+  background: var(--surface);
+}
+
+.thumb {
+  position: relative;
+  flex: none;
+  width: 200rpx;
+  height: 268rpx;
+  background: #f2f4f7;
+  border: 1px solid #e4e8ee;
+  border-radius: 10rpx;
+  overflow: hidden;
+}
+/*
+ * 缩略图缩放：纸张固定 794px 宽，整体缩到刚好放进 200×268rpx 的框里。
+ * 缩放倍率由 index.js 的 thumbScale() 按屏宽算出并从 data 传入，
+ * 因此这里只负责「以顶边居中」对齐，与参考站同一手法。
+ */
+.thumb-scale {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 794px;
+  transform-origin: top center;
+}
+.cur {
+  position: absolute;
+  left: 8rpx;
+  top: 8rpx;
+  padding: 2rpx 10rpx;
+  border-radius: 16rpx;
+  background: #1f4e79;
+  color: #fff;
+  font-size: 18rpx;
+}
+.meta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.meta-title { font-size: 30rpx; font-weight: 700; }
+.meta-sub { display: flex; align-items: center; gap: 10rpx; margin-top: 10rpx; flex-wrap: wrap; }
+/* 按钮行去掉后空出来的位置，用一行轻提示说明卡片上的手势 */
+.meta-hint {
+  margin-top: auto;
+  padding-top: 18rpx;
+  font-size: 21rpx;
+  color: var(--ink-4);
+}
+/* 排列与间距由全局 .btn-row / .btn-row-auto 决定，这里只留上边距 */
+.more { margin-top: 40rpx; }

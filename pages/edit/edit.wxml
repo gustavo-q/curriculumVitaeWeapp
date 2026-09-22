@@ -1,0 +1,474 @@
+<nav-bar
+  title="{{title}}{{dirty ? ' ·' : ''}}"
+  status-bar-height="{{statusBarHeight}}"
+  bar-height="{{navBarHeight}}"
+  action="{{exporting ? '导出中' : '导出'}}"
+  bind:action="onExportImage"
+/>
+
+<!-- ============ 工具栏（对应参考站顶栏：3 个入口 + 更多） ============
+     撤销 / 重做原先各占一格，7 个入口在 320px 屏上被压到 45.7px 一格，
+     图标与文字都挤在一起——而它俩是低频操作（真正高频的是「改内容」，
+     而改内容本身就该靠纸面点击，不该靠撤销）。现在它们移进「更多」浮层。
+
+     「基本信息」与「照片」也一并去掉：纸面本身就是这两个面板的入口——
+     点姓名 / 信息栏进基本信息，点照片或「＋ 添加照片」占位进照片，
+     工具栏再列一遍等于同一件事有两个入口。
+     320px 屏上每格由 64px 提到约 106.7px，剩下三个入口都更好点。 -->
+<view class="tools">
+  <view class="tools-inner">
+    <view class="tool {{panel === 'sections' ? 'on' : ''}}" data-panel="sections" bindtap="onPanel" hover-class="tap-hover-bg">
+      <text class="tool-icon">☰</text>
+      <text class="tool-label">目录</text>
+    </view>
+    <view class="tool {{panel === 'style' ? 'on' : ''}}" data-panel="style" bindtap="onPanel" hover-class="tap-hover-bg">
+      <text class="tool-icon">◐</text>
+      <text class="tool-label">样式</text>
+    </view>
+    <view class="tool {{menuOpen ? 'on' : ''}}" bindtap="onMenu" hover-class="tap-hover-bg">
+      <text class="tool-icon">⋯</text>
+      <text class="tool-label">更多</text>
+    </view>
+  </view>
+</view>
+
+<!-- ============ 顶部浮层菜单 ============
+     放在顶部而不是底部面板：菜单是「一屏总能点到」的全局操作，
+     底部会与编辑输入区抢空间，展开后还要滑动才能看到后面的项。 -->
+<view wx:if="{{menuOpen}}" class="menu-mask" bindtap="closeMenu"></view>
+<view wx:if="{{menuOpen}}" class="menu-pop" style="top:{{menuTop}}px">
+  <view class="menu-pop-head">更多</view>
+  <scroll-view class="menu-pop-body" scroll-y>
+    <!-- 撤销 / 重做：工具栏精简后收在这里。用 menu-row 而不是按钮，
+         浮层里就不再出现「一排宽度不一的按钮」那种观感问题。
+         不可用时给出降级灰与「无可撤销步骤」的说明，而不是点了没反应。 -->
+    <view class="menu-row {{canUndo ? '' : 'off'}}" bindtap="onUndo" hover-class="tap-hover-bg">
+      <view class="menu-row-main">
+        <text>撤销</text>
+        <text wx:if="{{!canUndo}}" class="menu-row-hint">没有可撤销的步骤</text>
+      </view>
+      <text class="menu-arrow">↶</text>
+    </view>
+    <view class="menu-row {{canRedo ? '' : 'off'}}" bindtap="onRedo" hover-class="tap-hover-bg">
+      <view class="menu-row-main">
+        <text>重做</text>
+        <text wx:if="{{!canRedo}}" class="menu-row-hint">没有可重做的步骤</text>
+      </view>
+      <text class="menu-arrow">↷</text>
+    </view>
+    <view class="menu-divider"></view>
+    <view class="menu-row" bindtap="onGoTemplates" hover-class="tap-hover-bg"><text>模板库</text><text class="menu-arrow">›</text></view>
+    <view class="menu-row" bindtap="onGoPreview" hover-class="tap-hover-bg"><text>全屏预览</text><text class="menu-arrow">›</text></view>
+    <view class="menu-row" bindtap="onResumeName" hover-class="tap-hover-bg"><text>重命名简历</text><text class="menu-arrow">›</text></view>
+    <view class="menu-row" bindtap="onCopyJSON" hover-class="tap-hover-bg"><text>复制 JSON 备份</text><text class="menu-arrow">›</text></view>
+    <view class="menu-row" bindtap="onGoHome" hover-class="tap-hover-bg"><text>我的简历（保存并返回）</text><text class="menu-arrow">›</text></view>
+  </scroll-view>
+</view>
+
+<!-- ============ 纸张画布 ============ -->
+<scroll-view class="stage" scroll-y>
+  <view class="stage-inner" style="height:{{paperBoxH * zoom}}px">
+    <view class="zoom-wrap" style="transform:scale({{zoom}})">
+      <resume-paper vm="{{vm}}" seams="{{seams}}" bind:pick="onPick" />
+    </view>
+  </view>
+  <view style="height:40rpx"></view>
+</scroll-view>
+
+<!-- ============ 底部面板 ============ -->
+<view wx:if="{{panel}}" class="panel">
+  <view class="panel-head">
+    <text class="panel-title">
+      <block wx:if="{{panel === 'sections'}}">目录</block>
+      <block wx:elif="{{panel === 'section'}}">编辑区块</block>
+      <block wx:elif="{{panel === 'item'}}">编辑条目</block>
+      <block wx:elif="{{panel === 'base'}}">基本信息</block>
+      <block wx:elif="{{panel === 'style'}}">样式与模板</block>
+      <block wx:elif="{{panel === 'photo'}}">照片</block>
+      <block wx:else>面板</block>
+    </text>
+    <text class="panel-close" bindtap="closePanel" hover-class="tap-hover">收起</text>
+  </view>
+
+  <!-- scroll-top 由拖动排序的「边缘自动滚动」驱动（见 edit.js 的 autoScrollStep）；
+       bindscroll 回写真实位置，拖动行才能正确跟随滚动后的内容。
+
+       ★ scroll-y 必须随拖动状态关闭（scroll-y="{{!rowDrag.active}}"）。
+       scroll-view 是原生滚动容器，行上的 bindtouchmove 只是冒泡监听、拦不住它：
+       手指按住某行纵向拖动的这同一串触摸，也被 scroll-view 当成滚动手势，
+       于是「行按 translateY 跟手位移」和「列表整体按手势滚动」同时发生，
+       拖动行以约两倍于手指的速度下滑（用户看到的「拖动时页面也跟着下滑」）。
+       关掉 scroll-y 只禁止手势滚动，scrollTop 会保留、scroll-top 仍可编程，
+       所以边缘自动滚动与落点换算（scrolledPx）都不受影响，松手后恢复滚动。 -->
+  <scroll-view class="panel-body" scroll-y="{{!rowDrag.active}}" scroll-top="{{panelScrollTop}}" bindscroll="onPanelScroll">
+    <!-- ---------- 目录 ----------
+         每行只有标题：点击即编辑，长按拖动排序，左滑露出「显示 / 隐藏 + 删除」。
+         三个手势统一由 touchstart/move/end 驱动（见 edit.js 的「列表手势」），
+         刻意不用 bindtap —— 拖动结束后小程序还会补一个 tap，
+         会把刚拖完的行误开成编辑面板。
+
+         ★ 左滑动作的数量由 .dir-acts 的宽度决定，必须与 edit.js 的
+         _DIR_ACTS_W_RPX（300rpx）一致，否则吸不住或露不全。 -->
+    <block wx:if="{{panel === 'sections'}}">
+      <view class="hint">点标题进入编辑 · 长按拖动排序 · 左滑可隐藏或删除</view>
+      <view
+        wx:for="{{dirRows}}"
+        wx:key="id"
+        class="dir-row {{rowMoving === item.id ? 'moving' : ''}} {{rowDrag.active && rowDrag.list === 'dir' && rowDrag.id === item.id ? 'dragging' : ''}} {{rowDrag.active && rowDrag.list === 'dir' && rowDrag.index === index && rowDrag.id !== item.id ? 'drop-target' : ''}}"
+        style="transform:translateY({{item.offsetY}}rpx);z-index:{{rowDrag.active && rowDrag.id === item.id ? 3 : 1}}"
+        data-list="dir"
+        data-id="{{item.id}}"
+        data-index="{{index}}"
+        bindtouchstart="onRowTouchStart"
+        bindtouchmove="onRowTouchMove"
+        bindtouchend="onRowTouchEnd"
+        bindtouchcancel="onRowTouchCancel">
+        <view class="dir-acts">
+          <view class="act act-toggle" data-id="{{item.id}}" catchtap="onRowToggleVisible">{{item.visible ? '隐藏' : '显示'}}</view>
+          <view class="act act-del" data-list="dir" data-id="{{item.id}}" catchtap="onRowDelete">删除</view>
+        </view>
+        <view class="dir-face" style="transform:translateX({{item.offsetX}}rpx)">
+          <text class="dir-title ellipsis">{{item.title}}</text>
+          <text wx:if="{{!item.visible}}" class="dir-flag">已隐藏</text>
+          <text class="dir-grip">⠿</text>
+        </view>
+      </view>
+      <view class="btn btn-primary panel-add" bindtap="onAddSection" hover-class="tap-hover">＋ 新增区块</view>
+    </block>
+
+    <!-- ---------- 区块 ---------- -->
+    <block wx:elif="{{panel === 'section' && currentSection}}">
+      <!-- 区块名与「是否出现」合成一行：
+           原来「隐藏」是一个独占整宽的大按钮，而它只是个开关，
+           却把下面的条目列表整条推下去；同时它和目录行左滑能做的事重复。
+           现在左滑负责切换（见目录），这一行只做提示与状态反馈。 -->
+      <view class="field field-inline">
+        <view class="grow">
+          <text class="field-label">区块名称</text>
+          <input
+            class="field-input"
+            value="{{currentSection.title}}"
+            data-scope="section"
+            data-sec="{{currentSection.id}}"
+            bindinput="onInput"
+            bindblur="onBlur"
+            confirm-type="done"
+          />
+        </view>
+      </view>
+      <view class="hint hint-tight">显示 / 隐藏在目录里左滑这一行切换{{currentSection.visible ? '' : '（当前已隐藏，简历上不出现）'}}。</view>
+
+      <view class="sect-title"><view class="bar"></view><text>条目（{{currentSection.total}}）</text></view>
+      <view class="hint">点一下编辑内容 · 长按拖动排序 · 左滑删除</view>
+      <view
+        wx:for="{{currentSection.items}}"
+        wx:key="id"
+        class="item-row {{rowMoving === item.id ? 'moving' : ''}} {{sel.item === item.id ? 'on' : ''}} {{rowDrag.active && rowDrag.list === 'item' && rowDrag.id === item.id ? 'dragging' : ''}} {{rowDrag.active && rowDrag.list === 'item' && rowDrag.index === index && rowDrag.id !== item.id ? 'drop-target' : ''}}"
+        style="transform:translateY({{item.offsetY}}rpx);z-index:{{rowDrag.active && rowDrag.id === item.id ? 3 : 1}}"
+        data-list="item"
+        data-id="{{item.id}}"
+        data-index="{{index}}"
+        bindtouchstart="onRowTouchStart"
+        bindtouchmove="onRowTouchMove"
+        bindtouchend="onRowTouchEnd"
+        bindtouchcancel="onRowTouchCancel">
+        <view class="row-del" data-list="item" data-id="{{item.id}}" catchtap="onRowDelete">删除</view>
+        <view class="item-face" style="transform:translateX({{item.offsetX}}rpx)">
+          <text class="item-idx">{{item.index}}</text>
+          <view class="grow">
+            <view class="item-line">
+              <text class="tag">{{item.typeLabel}}</text>
+              <text class="item-preview ellipsis">{{item.preview}}</text>
+            </view>
+          </view>
+          <text class="item-grip">⠿</text>
+        </view>
+      </view>
+
+      <!-- 新增条目：原来「整行 / 左+右 / 左+中+右」三个按钮挤在面板底部，
+           而排版类型在进条目面板后还能随时改（那里有示意图选择），
+           所以这里不需要先让用户做一次选择——统一走一个入口，
+           进去再按需调，少一步决策、少一排按钮。 -->
+      <view wx:if="{{currentSection.items.length}}" class="btn btn-primary panel-add" bindtap="onAddItem" hover-class="tap-hover">＋ 添加条目</view>
+      <view wx:else class="sect-empty">
+        <view class="sect-empty-title">这个区块还没有内容</view>
+        <view class="btn btn-primary" bindtap="onAddItem" hover-class="tap-hover">＋ 添加第一条</view>
+      </view>
+    </block>
+
+    <!-- ---------- 条目 ---------- -->
+    <block wx:elif="{{panel === 'item' && currentItem}}">
+      <view class="hint">第 {{currentItem.index}} 条 / 共 {{currentItem.total}} 条</view>
+
+      <!-- 排版：三个带示意图的选项，代替「整行 / 左+右 / 左+中+右」这串术语。
+           每一格用几条灰条示意文字落在纸面上的位置，用户看一眼就知道选哪个。 -->
+      <view class="sect-title"><view class="bar"></view><text>这一条怎么排</text></view>
+      <view class="shape-row">
+        <view
+          wx:for="{{itemTypes}}"
+          wx:key="id"
+          class="shape {{currentItem.type === item.id ? 'on' : ''}}"
+          data-type="{{item.id}}"
+          bindtap="onSetItemType"
+          hover-class="tap-hover">
+          <view class="shape-demo">
+            <view class="shape-line"></view>
+            <view wx:if="{{item.id !== 'ONE'}}" class="shape-line"></view>
+            <view wx:if="{{item.id === 'THREE'}}" class="shape-line"></view>
+          </view>
+          <text class="shape-label">{{item.label}}</text>
+        </view>
+      </view>
+      <view class="hint">{{currentItem.typeHint}}</view>
+
+      <!-- 字段随排版类型走：只渲染当前排版真的会画出来的栏位，
+           名字也用「标题 / 说明 / 时间」而不是「左栏 / 正文 / 右栏」。
+           填了却不显示的输入框是最容易让人以为「输入丢了」的一种设计。 -->
+      <view wx:for="{{currentItem.fields}}" wx:key="field" class="field">
+        <text class="field-label">{{item.label}}</text>
+        <textarea
+          wx:if="{{item.field === 'centerContent'}}"
+          class="field-textarea"
+          value="{{currentItem[item.field]}}"
+          placeholder="{{item.ph}}"
+          placeholder-class="ph"
+          auto-height
+          maxlength="-1"
+          data-scope="item"
+          data-sec="{{sel.sec}}"
+          data-item="{{sel.item}}"
+          data-field="{{item.field}}"
+          bindinput="onInput"
+          bindblur="onBlur"
+        />
+        <input
+          wx:else
+          class="field-input"
+          value="{{currentItem[item.field]}}"
+          placeholder="{{item.ph}}"
+          placeholder-class="ph"
+          data-scope="item"
+          data-sec="{{sel.sec}}"
+          data-item="{{sel.item}}"
+          data-field="{{item.field}}"
+          bindinput="onInput"
+          bindblur="onBlur"
+          confirm-type="done"
+        />
+      </view>
+      <view wx:if="{{currentItem.type !== 'ONE'}}" class="hint hint-tight">换排版不会丢内容：只需填当前排版用得到的栏，其余的会保留。</view>
+
+      <!-- 条目改顺序与删除都在「区块」页的条目列表里用手势完成，
+           这里只保留返回，避免同一动作出现两套入口。 -->
+      <view class="btn-row">
+        <view class="btn btn-sm" data-panel="section" bindtap="onPanel" hover-class="tap-hover">返回区块</view>
+      </view>
+    </block>
+
+    <!-- ---------- 基本信息 ---------- -->
+    <block wx:elif="{{panel === 'base'}}">
+      <view class="hint">每个字段右侧的开关决定它是否出现在简历上（对应参考站目录里的眼睛图标）。</view>
+      <view wx:for="{{baseFields}}" wx:key="key" class="base-row {{activeFields.indexOf(item.key) < 0 ? 'off' : ''}}">
+        <text class="base-label">{{item.label}}</text>
+        <input
+          class="base-input"
+          value="{{baseInfo[item.key]}}"
+          placeholder="未填写"
+          placeholder-class="ph"
+          data-scope="base"
+          data-key="{{item.key}}"
+          focus="{{focusKey === item.key}}"
+          bindinput="onInput"
+          bindblur="onBlur"
+          confirm-type="done"
+        />
+        <view class="switch {{activeFields.indexOf(item.key) >= 0 ? 'on' : ''}}" data-key="{{item.key}}" bindtap="onToggleField">
+          <view class="knob"></view>
+        </view>
+      </view>
+    </block>
+
+    <!-- ---------- 样式 ---------- -->
+    <block wx:elif="{{panel === 'style'}}">
+      <view class="sect-title"><view class="bar"></view><text>模板（换模板不改内容）</text></view>
+      <scroll-view class="tpl-strip" scroll-x enable-flex>
+        <view
+          wx:for="{{templates}}"
+          wx:key="id"
+          class="tpl-chip {{style.templateId === item.id ? 'on' : ''}}"
+          data-id="{{item.id}}"
+          bindtap="onTemplate"
+          hover-class="tap-hover">
+          <text class="tpl-chip-name">{{item.name}}</text>
+          <text class="tpl-chip-desc ellipsis">{{item.desc}}</text>
+        </view>
+      </scroll-view>
+
+      <view class="sect-title"><view class="bar"></view><text>配色</text></view>
+      <view class="colors">
+        <view
+          wx:for="{{colors}}"
+          wx:key="id"
+          class="color-dot {{style.headingColor === item.value ? 'on' : ''}}"
+          style="background:{{item.value}}"
+          data-id="{{item.id}}"
+          bindtap="onColor"
+          hover-class="tap-hover"
+        >
+          <text class="color-name">{{item.label}}</text>
+        </view>
+        <!-- 自由调色：预设之外的任意主题色（对应参考站的自定义颜色） -->
+        <view class="color-dot color-custom" bindtap="onColorPick" hover-class="tap-hover">
+          <text class="color-custom-plus">＋</text>
+          <text class="color-name">自定义</text>
+        </view>
+      </view>
+
+      <view class="picker-row">
+        <text class="picker-label">字体</text>
+        <picker range="{{fonts}}" range-key="label" value="{{fontIndex}}" bindchange="onFont">
+          <view class="picker-value">{{fonts[fontIndex].label}}</view>
+        </picker>
+      </view>
+      <view class="picker-row">
+        <text class="picker-label">标题装饰</text>
+        <picker range="{{headings}}" range-key="label" value="{{headingIndex}}" bindchange="onHeading">
+          <view class="picker-value">{{headings[headingIndex].label}}</view>
+        </picker>
+      </view>
+      <view class="picker-row">
+        <text class="picker-label">页面边框</text>
+        <picker range="{{borders}}" range-key="label" value="{{borderIndex}}" bindchange="onBorder">
+          <view class="picker-value">{{borders[borderIndex].label}}</view>
+        </picker>
+      </view>
+      <view class="picker-row">
+        <text class="picker-label">页面布局</text>
+        <picker range="{{layouts}}" range-key="label" value="{{layoutIndex}}" bindchange="onLayout">
+          <view class="picker-value">{{layouts[layoutIndex].label}}</view>
+        </picker>
+      </view>
+
+      <view class="switch-row">
+        <text class="picker-label">标题居中</text>
+        <view class="switch {{style.headingCenter ? 'on' : ''}}" bindtap="onToggleCenter"><view class="knob"></view></view>
+      </view>
+      <view class="switch-row">
+        <text class="picker-label">信息栏底色块</text>
+        <view class="switch {{style.accentBlock ? 'on' : ''}}" bindtap="onToggleAccent"><view class="knob"></view></view>
+      </view>
+
+      <view class="sect-title"><view class="bar"></view><text>排版尺寸</text></view>
+      <view class="slider-row">
+        <text class="slider-label">字号</text>
+        <slider class="slider" min="10" max="20" step="0.5" value="{{style.fontSize}}" activeColor="#1f4e79" block-size="18" data-key="fontSize" bindchange="onSize" />
+        <text class="slider-val">{{style.fontSize}}</text>
+      </view>
+      <view class="slider-row">
+        <text class="slider-label">行距</text>
+        <slider class="slider" min="1.1" max="2.4" step="0.01" value="{{style.lineHeight}}" activeColor="#1f4e79" block-size="18" data-key="lineHeight" bindchange="onSize" />
+        <text class="slider-val">{{style.lineHeight}}</text>
+      </view>
+      <view class="slider-row">
+        <text class="slider-label">字距</text>
+        <slider class="slider" min="-0.5" max="3" step="0.1" value="{{style.fontSpacing}}" activeColor="#1f4e79" block-size="18" data-key="fontSpacing" bindchange="onSize" />
+        <text class="slider-val">{{style.fontSpacing}}</text>
+      </view>
+      <view class="slider-row">
+        <text class="slider-label">左右边距</text>
+        <slider class="slider" min="20" max="90" step="1" value="{{style.horizontalPadding}}" activeColor="#1f4e79" block-size="18" data-key="horizontalPadding" bindchange="onSize" />
+        <text class="slider-val">{{style.horizontalPadding}}</text>
+      </view>
+      <view class="slider-row">
+        <text class="slider-label">上下边距</text>
+        <slider class="slider" min="20" max="80" step="1" value="{{style.verticalPadding}}" activeColor="#1f4e79" block-size="18" data-key="verticalPadding" bindchange="onSize" />
+        <text class="slider-val">{{style.verticalPadding}}</text>
+      </view>
+      <view class="slider-row">
+        <text class="slider-label">区块间距</text>
+        <slider class="slider" min="6" max="40" step="1" value="{{style.sectionSpacing}}" activeColor="#1f4e79" block-size="18" data-key="sectionSpacing" bindchange="onSize" />
+        <text class="slider-val">{{style.sectionSpacing}}</text>
+      </view>
+      <view class="slider-row">
+        <text class="slider-label">信息栏宽度</text>
+        <slider class="slider" min="20" max="60" step="1" value="{{style.baseInfoRatio}}" activeColor="#1f4e79" block-size="18" data-key="baseInfoRatio" bindchange="onSize" />
+        <text class="slider-val">{{style.baseInfoRatio}}%</text>
+      </view>
+
+      <!-- 智能压缩到一页：本质就是自动调上面这些排版参数，
+           因此放在「样式」面板而不是菜单里（菜单只留跳转类操作）。
+           原来在菜单浮层底部，现在移到这里，与它实际改动的东西同处一屏。 -->
+      <view class="sect-title"><view class="bar"></view><text>自动排版</text></view>
+      <view class="hint">自动往下调整字号、行距与边距，把内容压进一页。</view>
+      <view class="btn btn-sm btn-primary btn-one-page" bindtap="onFitOnePage" hover-class="tap-hover">智能压缩到一页</view>
+    </block>
+
+    <!-- ---------- 照片 ---------- -->
+    <block wx:elif="{{panel === 'photo'}}">
+      <view class="photo-preview">
+        <image wx:if="{{photoSrc}}" class="photo-img" src="{{photoSrc}}" mode="aspectFill" style="width:180rpx;height:240rpx;border-radius:{{photo.shape === 'circle' ? '50%' : '8rpx'}}" />
+        <view wx:else class="photo-empty">未添加照片</view>
+        <view class="btn-col">
+          <view class="btn btn-sm btn-primary" bindtap="onChoosePhoto" hover-class="tap-hover">从相册选择</view>
+          <view class="btn btn-sm btn-danger" bindtap="onRemovePhoto" hover-class="tap-hover">移除</view>
+        </view>
+      </view>
+
+      <view class="sect-title"><view class="bar"></view><text>内置头像</text></view>
+      <view class="chips">
+        <view wx:for="{{photoPresets}}" wx:key="id" class="chip" data-url="{{item.url}}" bindtap="onPreset" hover-class="tap-hover">{{item.label}}</view>
+      </view>
+
+      <view class="sect-title"><view class="bar"></view><text>外形</text></view>
+      <view class="chips">
+        <view wx:for="{{photoShapes}}" wx:key="id" class="chip {{photo.shape === item.id ? 'on' : ''}}" data-id="{{item.id}}" bindtap="onPhotoShape" hover-class="tap-hover">{{item.label}}</view>
+      </view>
+
+      <view class="sect-title"><view class="bar"></view><text>边框</text></view>
+      <view class="chips">
+        <view wx:for="{{photoBorders}}" wx:key="id" class="chip {{photo.border === item.id ? 'on' : ''}}" data-id="{{item.id}}" bindtap="onPhotoBorder" hover-class="tap-hover">{{item.label}}</view>
+      </view>
+
+      <view class="sect-title"><view class="bar"></view><text>证件照比例</text></view>
+      <view class="chips">
+        <view wx:for="{{photoRatios}}" wx:key="id" class="chip" data-ratio="{{item.ratio}}" bindtap="onPhotoRatio" hover-class="tap-hover">{{item.label}}</view>
+      </view>
+
+      <view class="sect-title"><view class="bar"></view><text>尺寸与位置</text></view>
+      <view class="slider-row">
+        <text class="slider-label">宽度</text>
+        <slider class="slider" min="60" max="180" step="2" value="{{photo.width}}" activeColor="#1f4e79" block-size="18" data-key="personalPhotoWidth" bindchange="onPhotoSize" />
+        <text class="slider-val">{{photo.width}}</text>
+      </view>
+      <view class="slider-row">
+        <text class="slider-label">高度</text>
+        <slider class="slider" min="60" max="240" step="2" value="{{photo.height}}" activeColor="#1f4e79" block-size="18" data-key="personalPhotoHeight" bindchange="onPhotoSize" />
+        <text class="slider-val">{{photo.height}}</text>
+      </view>
+      <view class="slider-row">
+        <text class="slider-label">右边距</text>
+        <slider class="slider" min="-100" max="200" step="2" value="{{photo.right}}" activeColor="#1f4e79" block-size="18" data-key="personalPhotoRight" bindchange="onPhotoPosition" />
+        <text class="slider-val">{{photo.right}}</text>
+      </view>
+      <view class="slider-row">
+        <text class="slider-label">上边距</text>
+        <slider class="slider" min="-60" max="120" step="2" value="{{photo.top}}" activeColor="#1f4e79" block-size="18" data-key="personalPhotoTop" bindchange="onPhotoPosition" />
+        <text class="slider-val">{{photo.top}}</text>
+      </view>
+    </block>
+
+    <!-- ---------- 菜单 ----------
+         菜单已改为顶部队列浮层（见文件开头），底部面板不再承载它；
+         这里保留一个兜底分支，防止 panel 因历史状态残留为 'menu' 时面板空白。 -->
+    <block wx:else>
+      <view class="hint">菜单已移到顶部工具栏的「⋯」按钮，点开即是一屏可点的操作列表。</view>
+      <view class="btn-row">
+        <view class="btn btn-sm btn-primary" bindtap="onMenu" hover-class="tap-hover">打开菜单</view>
+        <view class="btn btn-sm" bindtap="closePanel" hover-class="tap-hover">收起面板</view>
+      </view>
+    </block>
+  </scroll-view>
+</view>
+
+<!-- 导出用的离屏画布 -->
+<canvas type="2d" id="exportCanvas" class="export-canvas"></canvas>

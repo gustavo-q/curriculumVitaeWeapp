@@ -1,0 +1,90 @@
+/*
+ * 自定义导航栏样式。
+ *
+ * ★ 这里是导航栏样式的唯一来源：app.wxss 里原先也有一份同名 .nav-* 规则，
+ *   组件开了 addGlobalClass 后两份会同时命中、互相覆盖（谁生效取决于
+ *   样式注入顺序，属于不可预期行为），因此已从 app.wxss 移除。
+ */
+
+.nav {
+  position: relative;
+  background: linear-gradient(140deg, #26557f, #16334f);
+  color: #fff;
+  flex: none;
+}
+
+/* 内边距由 JS 按胶囊实测宽度注入（right 侧要给胶囊让位），此处不再写 padding */
+.nav-inner { position: relative; display: flex; align-items: center; }
+
+.nav-left { display: flex; align-items: center; flex: none; }
+.nav-back {
+  display: flex;
+  align-items: center;
+  /* 返回键的触控区补到 44px 高、宽度给足，避免箭头贴边点不中 */
+  padding: 0 20rpx 0 0;
+  min-width: 88rpx;
+  height: 88rpx;
+  font-size: 30rpx;
+  color: rgba(255, 255, 255, 0.92);
+}
+.nav-back-icon { font-size: 44rpx; line-height: 1; margin-top: -6rpx; }
+
+/*
+ * 标题绝对定位、撑满整行并向内留出左右安全距离，从而实现「真居中」。
+ *
+ * 三处要点：
+ *   1. position:absolute 让它不参与 flex 分配，因此不受右侧胶囊让位宽度
+ *      与「导出/导出中」文字长度变化的影响（此前标题会偏左 72.5px 并抖动 7px）。
+ *   2. pointer-events:none：标题不可点，点击穿透到下层的操作按钮。
+ *   3. 长标题会向两侧延伸，窄屏上与右侧按钮在几何上必然重叠（375px 屏上
+ *      胶囊让位 104px + 按钮 87px，已把按钮左缘推到屏幕中心左侧，没有任何
+ *      居中方案能同时做到「不重叠」）。因此让 .nav-right 提升层级压住标题：
+ *      最坏情况是标题尾部被按钮遮住，而按钮始终可读、可点。
+ */
+.nav-title {
+  position: absolute;
+  left: 160rpx;
+  right: 160rpx;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32rpx;
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* 提升到标题之上：保证操作按钮永远可读、可点 */
+.nav-right {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: none;
+  margin-left: auto;
+}
+.nav-action {
+  /*
+   * 右侧操作（导出 / 存图片）：96rpx ≈ 41~50px，
+   * 原来 72rpx 在 320px 屏只有 31px，低于 44px 触控下限。
+   */
+  display: flex;
+  align-items: center;
+  min-height: 96rpx;
+  padding: 0 26rpx;
+  border-radius: 48rpx;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 27rpx;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+}
+
+/* 触摸反馈：小程序没有 :active，用 hover-class 实现 */
+.nav-hover { opacity: 0.62; }

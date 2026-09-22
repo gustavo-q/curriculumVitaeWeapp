@@ -1,0 +1,298 @@
+/* ============================================================
+   全局样式与设计变量
+   配色取自参考站（curriculumVitae）的站点主题
+   ============================================================ */
+page {
+  --brand: #1f4e79;
+  --brand-2: #2f6ba3;
+  --brand-soft: rgba(31, 78, 121, 0.08);
+  --brand-ring: rgba(31, 78, 121, 0.22);
+  --bg: #eef1f5;
+  --surface: #ffffff;
+  --surface-2: #f5f6f8;
+  --line: #e4e8ee;
+  --line-2: #d7dde5;
+  --ink: #23282f;
+  --ink-2: #5b6570;
+  /*
+   * 三级文字色。原值 #8a929c 在白底上只有 3.15:1、在页面底色上是 2.78:1，
+   * 低于 WCAG AA 要求的 4.5:1；而它承载的是提示、字段名、时间等实际信息
+   * （不是装饰）。这里加深到 #6b7280（白底 4.83:1），既达标又仍是「次要灰」。
+   */
+  --ink-3: #6b7280;
+  /* 占位符/装饰性文字：允许更浅，但不承载信息 */
+  --ink-4: #9aa3ae;
+  --danger: #b3261e;
+  --font: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 28rpx;
+  line-height: 1.6;
+}
+
+view, text, scroll-view, button, input, textarea, image, label {
+  box-sizing: border-box;
+}
+
+/* ---------- 通用卡片 ---------- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16rpx;
+}
+
+/* ============================================================
+   按钮：唯一规范（所有页面的按钮都只能由这里的规则决定外观）
+   ------------------------------------------------------------
+   改前各页面各写一套：间距三档（12 / 14 / 16rpx），而且没有任何
+   宽度分配规则 —— 按钮宽度等于「文字宽 + 内边距」，同一排里宽窄不一，
+   放不下时还会折行错位（见下方「按钮行」注释）。
+
+   · 尺寸只有两级：.btn（104rpx）/ .btn-sm（96rpx），
+     两级都 ≥ 44px 触控下限，差值就是「主 / 次」一档。
+   · 圆角、字重、行高、纵向内边距两级各自统一；宽度一律由容器决定，
+     绝不随文字长短变化 —— white-space:nowrap 是这条的前提。
+   · 语义只有四种：默认（白底描边）/ 主色 / 危险 / 幽灵。
+   ============================================================ */
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  padding: 0 28rpx;
+  /*
+   * 104rpx ≈ 44.4px @320px / 54.5px @393px。
+   * 之前 84rpx 在 320px 屏只有 35.8px，低于 44px 的可靠触控下限。
+   */
+  min-height: 104rpx;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  line-height: 1.25;
+  /*
+   * 文字一律单行：换行会让同一行的按钮高度不一致，
+   * 也让「按钮行等分宽度」失去意义（宽度本该由容器分配，不由文案长短决定）。
+   */
+  white-space: nowrap;
+}
+
+.btn::after { border: none; }
+
+.btn-primary {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ink-2);
+}
+
+/*
+ * 小按钮同样要够点得中：96rpx ≈ 41px @320px / 50px @393px。
+ * 纯靠内边距撑高在「上移/下移/删除」这类密集按钮行里会显得拥挤，
+ * 因此用 min-height 保证热区，视觉上仍比主按钮矮一档。
+ */
+.btn-sm {
+  min-height: 96rpx;
+  padding: 0 24rpx;
+  font-size: 26rpx;
+}
+
+.btn-danger {
+  color: var(--danger);
+  border-color: rgba(179, 38, 30, 0.28);
+}
+
+/* ---------- 按钮行：并列按钮的唯一容器 ----------
+ *
+ * ★ 所有「一排按钮」都必须套 .btn-row，各页面不得再自定义按钮排列规则。
+ *
+ *   改前有 6 处各写各的（.btn-row / .hero-acts / .empty-acts / .tpl-acts /
+ *   .bar-right / .more），gap 在 12、14、16rpx 之间各取各的，而且都没有
+ *   flex:1 —— 于是按钮宽度等于「文字宽度 + 内边距」，同一行里宽窄不一；
+ *   换行时更糟：菜单底部三个按钮在浮层里放不下，第三个被挤到第二行、
+ *   独占一行且比上面两个短一截。
+ *   （那三个按钮现已整体移除，菜单不再含按钮；见 edit.wxss 的说明。）
+ *
+ *   flex:1 1 0 让每个按钮平分整行宽度，宽度从此与文案长短无关；
+ *   min-width:0 允许按钮在极窄屏上收敛，而不是把行撑破。
+ */
+.btn-row {
+  display: flex;
+  gap: 16rpx;
+}
+
+.btn-row > .btn {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/*
+ * 按内容宽排列的按钮组（.btn-row-auto）。
+ *
+ * 顶栏右侧（预览页「复制 JSON / 去编辑」）这类按钮组属于「就地操作」，
+ * 按钮该贴着内容宽、整体靠右，等分会把它们撑满整条顶栏、压掉左侧信息。
+ * 因此保留 .btn-row 的统一容器与间距，只把宽度分配权交回内容。
+ */
+.btn-row-auto > .btn { flex: 0 0 auto; }
+
+/* 内容宽 + 整体居中：适合一行里只有单个次要/破坏性按钮的场景 */
+.btn-row-center {
+  justify-content: center;
+}
+
+/* 按钮列：纵向堆叠、各占整宽（如照片面板两侧操作） */
+.btn-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.btn-col > .btn { width: 100%; }
+
+/*
+ * 按钮网格：两列等宽，主操作跨满整行。
+ *
+ * ★ 为什么单靠 .btn-row 不够：等分宽度是「容器宽 ÷ 按钮数」，
+ *   一旦某个按钮的文案比这一份还宽，nowrap 的文字就会溢出格子。
+ *   实测真实场景：首页 hero 内宽 347px（320px 屏上约 296px），三个按钮等分
+ *   只有 110px，而「＋ 新建简历」在大一号字号（.btn 28rpx）+ 两侧 56rpx 内边距下
+ *   约需 112px。因此主操作独占一行、次操作两列等宽，即下面的 .btn-wide。
+ *
+ *   minmax(0, 1fr) 而不是 1fr：1fr 的最小值是 auto，长文案会把列撑宽、
+ *   两列于是不再等宽；minmax(0,1fr) 才真正锁死等分。
+ */
+.btn-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16rpx;
+}
+
+.btn-grid > .btn {
+  width: 100%;
+  min-width: 0;
+}
+
+/* 跨满整行的按钮（主操作），网格与按钮列里都可用 */
+.btn-grid > .btn-wide,
+.btn-col > .btn-wide { grid-column: 1 / -1; }
+
+/*
+ * 禁用态用「降级灰」而不是整体降透明度。
+ *
+ * opacity:0.45 会把文字对比度压到 2.69:1，低于 AA；而且 .btn 全是 <view>，
+ * 没有任何节点带 disabled 属性，这条规则此前是死代码。这里改成颜色降级，
+ * 并对确实带 disabled 属性的节点生效。
+ */
+.btn[disabled], .btn-disabled {
+  color: var(--ink-4);
+  background: var(--surface-2);
+  border-color: var(--line);
+}
+
+/* ---------- 自定义导航栏 ----------
+ * 样式已全部收敛到 components/nav-bar/nav-bar.wxss（唯一来源）。
+ * 这里原先还有一份同名的 .nav-* 规则，组件开了 addGlobalClass 后
+ * 两份会同时命中、互相覆盖，谁生效取决于样式注入顺序，属于不可预期行为。
+ */
+
+/* ---------- 触摸反馈 ----------
+ * 小程序没有 CSS :active，按压态统一用 hover-class 表达。
+ */
+.tap-hover { opacity: 0.6; }
+.tap-hover-bg { background: rgba(31, 78, 121, 0.08); }
+/* 整张卡片可点：用极淡的底色变化提示可点，不改变布局 */
+.card-hover { background: rgba(31, 78, 121, 0.035); }
+
+/* ---------- 区块小标题 ---------- */
+.sect-title {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin: 30rpx 0 16rpx;
+  font-size: 27rpx;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.sect-title .bar {
+  width: 6rpx;
+  height: 28rpx;
+  border-radius: 3rpx;
+  background: var(--brand);
+}
+
+/* ---------- 表单 ---------- */
+.field {
+  margin-bottom: 20rpx;
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 8rpx;
+  font-size: 24rpx;
+  color: var(--ink-3);
+}
+
+.field-input {
+  width: 100%;
+  min-height: 72rpx;
+  padding: 14rpx 18rpx;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10rpx;
+  font-size: 27rpx;
+  line-height: 1.5;
+}
+
+.field-textarea {
+  width: 100%;
+  min-height: 150rpx;
+  padding: 14rpx 18rpx;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10rpx;
+  font-size: 27rpx;
+  line-height: 1.6;
+}
+
+/* ---------- 标签 / 徽章 ---------- */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3rpx 12rpx;
+  border-radius: 20rpx;
+  font-size: 20rpx;
+  line-height: 1.6;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  border: 1px solid var(--line);
+}
+
+.tag-brand {
+  background: var(--brand-soft);
+  color: var(--brand);
+  border-color: rgba(31, 78, 121, 0.18);
+}
+
+.muted { color: var(--ink-3); }
+.small { font-size: 23rpx; }
+.row { display: flex; align-items: center; }
+.gap8 { gap: 8rpx; }
+.gap12 { gap: 12rpx; }
+.grow { flex: 1; min-width: 0; }
+.ellipsis { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+/* ---------- 底部安全区 ---------- */
+.safe-bottom {
+  height: env(safe-area-inset-bottom);
+  flex: none;
+}

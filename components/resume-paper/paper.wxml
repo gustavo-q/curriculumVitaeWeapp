@@ -1,0 +1,52 @@
+<!--
+  简历纸张渲染（对应参考站 components/ResumePaper.vue）
+  纯渲染组件：数据由 utils/paper.js 编译成 VM 后传入，组件本身不含业务逻辑。
+  editable = true 时，空栏位渲染成可点击的占位落点（对应参考站的 data-edit 槽位）。
+-->
+<view class="paper" style="{{style}}" bindtap="onTap">
+  <!-- 分页页缝（仅编辑器开启分页时渲染） -->
+  <view wx:if="{{seams.length}}" class="paper-seams">
+    <view wx:for="{{seams}}" wx:key="*this" class="page-seam" style="top:{{item}}px">
+      <text class="page-seam-no">第 {{index + 2}} 页</text>
+    </view>
+  </view>
+
+  <!-- ============ 左栏 / 右栏 双栏布局 ============ -->
+  <view wx:if="{{cols.show}}" class="cols" style="{{cols.style}}">
+    <view wx:if="{{side.before}}" class="side" style="{{side.style}}">
+      <include src="./side.wxml" />
+    </view>
+    <view class="main">
+      <view wx:for="{{sections}}" wx:key="id" class="sec" style="{{item.style}}">
+        <include src="./section.wxml" />
+      </view>
+    </view>
+    <view wx:if="{{!side.before}}" class="side" style="{{side.style}}">
+      <include src="./side.wxml" />
+    </view>
+  </view>
+
+  <!-- ============ 单栏布局 ============ -->
+  <block wx:else>
+    <view class="head" style="{{headStyle}}">
+      <view class="head-text">
+        <view class="head-name {{nameCls}}" data-base="name">{{name}}</view>
+        <view wx:if="{{headCells.length}}" class="head-grid">
+          <view wx:for="{{headCells}}" wx:key="key" class="head-cell" data-base="{{item.key}}">
+            <text class="hk" data-base="{{item.key}}">{{item.label}}</text>
+            <text class="hv" data-base="{{item.key}}">{{item.value}}</text>
+          </view>
+        </view>
+      </view>
+      <image wx:if="{{photo.show}}" class="head-photo" src="{{photo.src}}" style="{{photo.style}}" mode="aspectFill" data-photo="1" />
+      <view wx:elif="{{photoSlot.show}}" class="photo-add" style="{{photoSlot.style}}" data-photo-add="1">
+        <text class="photo-add-plus" data-photo-add="1">＋</text>
+        <text class="photo-add-tip" data-photo-add="1">添加照片</text>
+      </view>
+    </view>
+
+    <view wx:for="{{sections}}" wx:key="id" class="sec" style="{{item.style}}">
+      <include src="./section.wxml" />
+    </view>
+  </block>
+</view>

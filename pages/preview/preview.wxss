@@ -1,0 +1,32 @@
+/* ★ page 必须是限高的 flex 列容器：否则 .stage 的 flex:1 无效，
+   scroll-view 拿不到可滚动高度，整张纸会把页面撑成超长文档，
+   顶部的操作条一滚就找不到了。 */
+page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: #e9edf2;
+}
+
+.bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  padding: 18rpx 28rpx;
+  background: #fff;
+  border-bottom: 1px solid #e4e8ee;
+}
+.bar-left { display: flex; align-items: baseline; gap: 12rpx; min-width: 0; }
+.pages { font-size: 26rpx; font-weight: 600; color: #1f4e79; white-space: nowrap; }
+.pages.multi { color: #b3261e; }
+.hint { font-size: 22rpx; color: var(--ink-3); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* 排列与间距走全局 .btn-row / .btn-row-auto，这里只保证不被左侧信息压缩 */
+.bar-right { flex: none; }
+
+.stage { flex: 1; min-height: 0; background: #e9edf2; }
+.stage-inner { position: relative; padding: 24rpx 0; }
+.zoom-wrap { transform-origin: top left; margin-left: 16px; }
+.export-canvas { position: fixed; left: -9999px; top: 0; width: 10px; height: 10px; }

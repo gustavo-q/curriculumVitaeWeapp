@@ -1,0 +1,165 @@
+/* 纸张样式 —— 与参考站 ResumePaper.vue 的 <style scoped> 逐条对应 */
+
+.paper {
+  position: relative;
+  background: #ffffff;
+  color: #23282f;
+  box-sizing: border-box;
+  overflow: hidden;
+  flex: none;
+}
+
+/* ---------- 页缝 ---------- */
+.paper-seams { position: absolute; left: 0; right: 0; top: 0; height: 0; }
+.page-seam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px dashed rgba(31, 78, 121, 0.32);
+  pointer-events: none;
+  z-index: 3;
+}
+.page-seam-no {
+  position: absolute;
+  right: 10px;
+  top: 4px;
+  padding: 1px 7px;
+  border-radius: 9px;
+  background: rgba(31, 78, 121, 0.1);
+  color: #1f4e79;
+  font-size: 10px;
+  line-height: 16px;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+/* ---------- 顶部信息（单栏） ---------- */
+.head { display: flex; align-items: flex-start; }
+.head-text { flex: 1; min-width: 0; }
+.head-name {
+  font-size: 1.85em;
+  font-weight: 700;
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+}
+.head-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 18px;
+  row-gap: 2px;
+}
+.head-cell { display: flex; gap: 4px; min-width: 0; align-items: baseline; }
+.hk { color: #6b7280; white-space: nowrap; flex: none; }
+.hv { word-break: break-all; min-width: 0; }
+.head-photo { flex: none; background: #eceff2; }
+
+/* 无照片时的占位块（仅编辑态） */
+.photo-add {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px dashed #b9c2cc;
+  border-radius: 4px;
+  background: #fafbfc;
+  color: #8a929c;
+  font-size: 11px;
+  line-height: 1.2;
+}
+.photo-add-plus { font-size: 20px; line-height: 1; }
+.photo-add-tip { font-size: 11px; }
+
+/* ---------- 两栏 ---------- */
+.cols { display: grid; align-items: start; }
+.side { min-width: 0; }
+.side-photo-img { background: #eceff2; display: block; }
+.side-name {
+  font-size: 1.5em;
+  font-weight: 700;
+  letter-spacing: 1px;
+  margin-bottom: 10px;
+}
+.side-list { font-size: 0.95em; }
+.side-dt { color: #6b7280; margin-top: 8px; font-size: 0.95em; }
+.side-dd { margin: 1px 0 0; word-break: break-all; }
+
+/* ---------- 区块 ---------- */
+.sec-title {
+  font-size: 1.12em;
+  font-weight: 700;
+  letter-spacing: 1px;
+  margin-bottom: 1.384em;
+}
+.sec-title.center { text-align: center; }
+
+/* 圆点标题：前置实心圆点 */
+.th-dot { position: relative; }
+.th-dot::before {
+  content: '';
+  position: absolute;
+  left: 1px;
+  top: 0.52em;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.85;
+}
+/* 双线标题：主色细线 + 更浅的第二色 */
+.th-double { border-bottom-style: solid !important; border-bottom-width: 1px !important; position: relative; }
+.th-double::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -3px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.35;
+}
+.th-line { position: relative; }
+
+.sec-body { display: flex; flex-direction: column; gap: 0.18em; }
+
+/* ---------- 条目三种排版 ---------- */
+.item { display: grid; align-items: baseline; column-gap: 14px; }
+.t-one { grid-template-columns: 1fr; }
+.t-two { grid-template-columns: 1fr auto; }
+.t-three { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr) auto; }
+
+.c-left { font-weight: 600; min-width: 0; }
+.c-center { white-space: pre-wrap; word-break: break-word; min-width: 0; }
+.c-right { white-space: nowrap; color: #4b5560; font-variant-numeric: tabular-nums; }
+.t-one .c-center { grid-column: 1 / -1; }
+
+/*
+ * 编辑态的可点落点。
+ *
+ * 纸张的点击统一由 .paper 上的 onTap 处理，而小程序的事件源 e.target 是
+ * 被点到的最内层节点。文字叶子不承载任何语义，因此让它穿透（pointer-events:none），
+ * 事件源就稳定落在带 data-sec/item/field 的栏位 view 上。
+ * 只读态不设此项：预览 / 导出无需交互，保留默认行为更贴近浏览器渲染。
+ */
+.cell-text, .cell-ph { pointer-events: none; }
+
+/* 列表行：所有列举行统一左边缘（与参考站一致，不做悬挂缩进） */
+.c-center.is-list { padding-left: 2.8em; }
+
+.cell-text { white-space: inherit; word-break: inherit; }
+
+/*
+ * 编辑态空栏占位文字。
+ *
+ * 参考站用 [data-edit].empty::before + content: attr(data-ph) 画占位，
+ * 好处是占位不进入 DOM（导出时天然干净）。小程序对伪元素与 attr() 的支持
+ * 不如浏览器，因此改为渲染一个真实的 <text>：只在 editable 时输出
+ * （见 section.wxml 的 wx:elif），导出 / 预览的 VM 是 editable=false，
+ * 该节点根本不存在，产物与参考站一样干净。
+ */
+.cell-ph { color: #9aa3ae; }
+
+/* 空值（姓名） */
+.is-empty { color: #9aa3ae; }

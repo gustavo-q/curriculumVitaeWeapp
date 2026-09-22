@@ -1,0 +1,35 @@
+<!-- 单个区块：标题 + 条目列表（被 paper.wxml 以 include 复用）
+     ★ data-* 必须挂在「事件源节点自身」：
+     paper.js 的 onTap 读的是 e.target.dataset，而 e.target 是真正被点到的
+     那个节点（不是绑定事件的 .paper）。文字字形被点到时事件源是渲染文字的
+     内层节点，若它自己没有 data-*，dataset 就是空对象，点击会被守卫拦掉。
+     因此这里给「栏位」与「文字」两层都挂上同一组 data-*。 -->
+<view class="sec-title {{item.titleCls}}" style="{{item.titleStyle}}" data-sec="{{item.id}}" data-field="title">{{item.title}}</view>
+<view class="sec-body">
+  <view wx:for="{{item.itemVMs}}" wx:for-item="it" wx:key="id" class="item {{it.cls}}" data-sec="{{item.id}}" data-item="{{it.id}}">
+    <view
+      wx:for="{{it.cells}}"
+      wx:for-item="c"
+      wx:key="field"
+      class="{{c.cls}}"
+      data-sec="{{item.id}}"
+      data-item="{{it.id}}"
+      data-field="{{c.field}}"
+    >
+      <text
+        wx:if="{{!c.isEmpty}}"
+        class="cell-text"
+        data-sec="{{item.id}}"
+        data-item="{{it.id}}"
+        data-field="{{c.field}}"
+      >{{c.text}}</text>
+      <text
+        wx:elif="{{editable}}"
+        class="cell-ph"
+        data-sec="{{item.id}}"
+        data-item="{{it.id}}"
+        data-field="{{c.field}}"
+      >{{c.ph}}</text>
+    </view>
+  </view>
+</view>

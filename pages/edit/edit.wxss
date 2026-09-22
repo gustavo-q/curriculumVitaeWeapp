@@ -1,0 +1,603 @@
+/* ============ 编辑器：工具栏 / 画布 / 底部面板 ============
+ *
+ * ★ 整页是一个「固定视口、内部各自滚动」的三段式 flex 布局：
+ *     工具栏（固定） / 纸面画布（占满剩余，内部滚动） / 底部面板（固定）
+ *
+ *   这里必须显式把 page 声明成 flex 列容器。小程序 page 默认只是一块
+ *   普通流式根节点，若只给子元素写 flex:1 / flex:none，这些声明全部无效：
+ *   scroll-view 拿不到可滚动高度会把内容整条撑开，底部面板于是被推到
+ *   文档流的最末尾——必须把整页滑到底才能看见面板，这正是「菜单弹出在
+ *   底部、按钮够不着」的根源。
+ */
+page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/*
+ * 工具栏：5 个面板入口等分整宽，保证全部始终可见。
+ *
+ * 曾经是 7 个入口（撤销 / 重做各占一格 + 5 个）。撤销重做属于低频操作，
+ * 却占掉两份宽度，320px 屏上每格只剩 45.7px，图标与标签挤在一起。
+ * 现在它们移进「更多」浮层，这里只剩 5 格：320/5 = 64px，宽出 40%。
+ *
+ * 仍然不用「按钮保底宽度 + 横向滚动」：实测最右侧入口会被挤出视野，
+ * 入口藏起来比按钮窄更糟（用户根本找不到）。
+ *
+ * 尺寸口径（320px 是最窄的常见机型，1rpx≈0.4267px）：
+ *   · 宽度：320/5 = 64px，达标
+ *   · 高度：必须 ≥ 104rpx（≈44.4px）才达标；88rpx 只有 37.6px，
+ *     所以这里定 104rpx。注意宽度达标不能推出高度达标，两者要分别校验。
+ */
+.tools {
+  flex: none;
+  width: 100%;
+  background: #fff;
+  border-bottom: 1px solid #e4e8ee;
+  white-space: nowrap;
+}
+.tools-inner {
+  display: flex;
+  align-items: stretch;
+}
+.tool {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 104rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2rpx;
+  color: #5b6570;
+  position: relative;
+}
+/* 分隔线：按钮之间需要视觉边界 */
+.tool + .tool::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 22%;
+  bottom: 22%;
+  width: 1px;
+  background: #f0f3f7;
+}
+.tool.on { color: #1f4e79; background: rgba(31, 78, 121, 0.08); }
+.tool.on::after {
+  content: '';
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: 0;
+  height: 4rpx;
+  border-radius: 2rpx;
+  background: #1f4e79;
+}
+/*
+ * 禁用态（无可撤销步骤）用「降级灰」而不是整体降透明度：
+ * 透明会把文字对比度压到 1.46:1，几乎读不出来。
+ */
+.tool.off { color: #9aa3ae; }
+.tool.off .tool-icon { opacity: 0.7; }
+.tool-icon { font-size: 32rpx; line-height: 1.05; }
+/*
+ * 标签是 7 个入口唯一的语义说明（图标是 ↶☰◍ 这类非常规符号），
+ * 因此字号不能太小：24rpx 在 320px 屏约 10.2px，是中文可辨识的下限。
+ */
+.tool-label {
+  font-size: 24rpx;
+  line-height: 1.2;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* ---------- 画布 ---------- */
+.stage {
+  flex: 1;
+  min-height: 0;
+  background: #e9edf2;
+}
+.stage-inner { position: relative; padding: 20rpx 0; }
+.zoom-wrap { transform-origin: top left; margin-left: 12px; }
+
+/* ---------- 面板 ---------- */
+/*
+ * 面板固定在视口下沿（page 已是 flex 列容器，flex:none 保证它不参与压缩），
+ * 面板体自己滚动，因此无论纸面多长都始终可见、始终可点。
+ * max-height 用 vh 兜住，避免小屏上面板把纸面挤没。
+ */
+.panel {
+  flex: none;
+  max-height: 58vh;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-top: 1px solid #e4e8ee;
+  box-shadow: 0 -6rpx 24rpx rgba(16, 24, 40, 0.1);
+  /* 全面屏底部横条让位，否则最后一行按钮会被 Home 指示条盖住 */
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.panel-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18rpx 28rpx 14rpx;
+  border-bottom: 1px solid #eef1f5;
+}
+.panel-title { font-size: 29rpx; font-weight: 700; }
+.panel-close {
+  flex: none;
+  font-size: 25rpx;
+  color: #5b6570;
+  padding: 10rpx 6rpx 10rpx 28rpx;
+}
+.panel-body { flex: 1; min-height: 0; padding: 18rpx 28rpx 32rpx; }
+.panel-add { margin-top: 20rpx; }
+
+/* 空区块的落点：面板里一个条目都没有时，主操作不能被挤到空白下面去 */
+.sect-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20rpx;
+  padding: 40rpx 0 8rpx;
+}
+.sect-empty-title { font-size: 26rpx; color: var(--ink-3); }
+.sect-empty .btn { width: 100%; }
+
+/* 与 .field 同宽但可横排的一行（区块名 + 状态说明） */
+.field-inline { display: flex; align-items: flex-start; gap: 16rpx; }
+/* 紧跟字段的补充说明：上一条 .hint 已经给了 margin-bottom，这里只要贴住上方 */
+.hint-tight { margin-top: -8rpx; }
+
+/* ---------- 顶部浮层菜单（替代把菜单塞进底部面板） ---------- */
+.menu-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(16, 24, 40, 0.34);
+  z-index: 90;
+}
+.menu-pop {
+  position: fixed;
+  right: 20rpx;
+  z-index: 91;
+  width: 460rpx;
+  max-height: 74vh;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 18rpx;
+  box-shadow: 0 16rpx 48rpx rgba(16, 24, 40, 0.24);
+  overflow: hidden;
+}
+.menu-pop-head {
+  flex: none;
+  padding: 18rpx 24rpx 12rpx;
+  font-size: 23rpx;
+  font-weight: 700;
+  color: var(--ink-3);
+  letter-spacing: 1rpx;
+  border-bottom: 1px solid #f2f4f7;
+}
+.menu-pop-body { flex: 1; min-height: 0; }
+.menu-pop .menu-row { padding: 22rpx 24rpx; font-size: 27rpx; }
+/*
+ * 撤销 / 重做行的「标题 + 副说明」两行结构。
+ * 不可用时不能只把整行调淡：那会把文字对比度压到读不出来，
+ * 所以用降级灰 + 一句「没有可撤销的步骤」把「为什么点了没反应」讲清楚。
+ */
+.menu-row-main { display: flex; flex-direction: column; gap: 2rpx; min-width: 0; }
+.menu-row-hint { font-size: 21rpx; color: var(--ink-3); }
+.menu-pop .menu-row.off { color: var(--ink-4); }
+.menu-divider { height: 1px; background: #f2f4f7; }
+/* 菜单底部操作区（.menu-pop-foot）已随三个按钮一并移除：
+   菜单现在只承载跳转类操作，「智能压缩到一页」移进了样式面板。 */
+
+/* 样式面板里的「智能压缩到一页」：单个主操作，占满面板整宽 */
+.btn-one-page { width: 100%; margin-top: 8rpx; }
+
+.hint { font-size: 23rpx; line-height: 1.7; color: var(--ink-3); margin-bottom: 16rpx; }
+
+/* ---------- 目录 / 条目行：点击编辑 + 长按拖动 + 左滑露出动作 ----------
+ *
+ * ★ 每行是「动作层在下、内容面在上」的两层结构，两轴位移分工不同：
+ *      .dir-row / .item-row     裁切容器；translateY 承载「拖动排序」的纵向位移
+ *        └ .dir-acts / .row-del 右对齐的动作层，平时被内容面完全盖住
+ *        └ .dir-face/.item-face 内容面；translateX 承载「左滑」的横向位移
+ *
+ *   横向位移必须只加在内容面上：若加在整行，动作层会跟着一起滑走，
+ *   左滑时永远露不出红色删除层（这是分层的原因，不是随意选择）。
+ *   纵向位移则必须加在整行上，否则拖动时动作层会留在原地。
+ *
+ *   两种位移都只用 transform、不改布局：拖动期间其余行不重排，
+ *   手指抬起才由 store 真正改顺序并广播一次，列表不会边拖边抖。
+ *
+ *   目录行的动作层有两个（显示/隐藏 + 删除），条目行只有一个（删除），
+ *   因此宽度分两档，并与 edit.js 的 _DIR_ACTS_W_RPX / _DEL_W_RPX 对齐。
+ */
+.dir-row,
+.item-row {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #eef1f5;
+  border-radius: 12rpx;
+  margin-bottom: 12rpx;
+  background: #fff;
+  /* 只服务于松手后的落位回弹；跟手阶段由 .moving 关掉 */
+  transition: transform 0.18s ease-out;
+}
+
+.dir-face,
+.item-face {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  /* 行高给足：整行都是点击 / 长按热区，104rpx ≈ 52px @375 */
+  min-height: 104rpx;
+  padding: 0 20rpx;
+  background: #fff;
+  transition: transform 0.18s ease-out;
+}
+/*
+ * 跟手阶段必须关掉过渡：每帧 setData 更新 transform，
+ * 若仍带 0.18s 过渡，行的位移会一直追不上手指（「越拖越落后」）。
+ * 松手后 .moving 被清掉，过渡恢复，位移归零才会播出回弹。
+ */
+.dir-row.moving,
+.item-row.moving,
+.dir-row.moving .dir-face,
+.item-row.moving .item-face {
+  transition: none;
+}
+
+/* 拖动中的行浮起来：阴影 + 抬高层级，与被跨过的行区分开 */
+.dir-row.dragging,
+.item-row.dragging {
+  border-color: #1f4e79;
+  box-shadow: 0 10rpx 28rpx rgba(16, 24, 40, 0.22);
+}
+.dir-row.dragging .dir-face,
+.item-row.dragging .item-face { background: #f7f9fb; }
+/* 落点提示：目标行加一圈主题色 */
+.dir-row.drop-target,
+.item-row.drop-target { border-color: rgba(31, 78, 121, 0.5); }
+
+.dir-title { flex: 1; font-size: 28rpx; font-weight: 600; color: #23282f; }
+.dir-grip { flex: none; color: #c4cbd4; font-size: 28rpx; letter-spacing: 2rpx; }
+.dir-flag {
+  flex: none;
+  font-size: 20rpx;
+  color: var(--ink-3);
+  border: 1px solid var(--line);
+  border-radius: 20rpx;
+  padding: 2rpx 12rpx;
+}
+
+/* 动作层：右对齐、等分，宽度与 edit.js 的常量一致 */
+.row-del,
+.dir-acts {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: stretch;
+}
+/* 条目行只有「删除」一个动作，宽度必须与 _DEL_W_RPX 一致（168rpx） */
+.row-del {
+  width: 168rpx;
+  align-items: center;
+  justify-content: center;
+  background: var(--danger);
+  color: #fff;
+  font-size: 27rpx;
+  font-weight: 600;
+}
+/* 目录行有两个动作，总宽必须与 _DIR_ACTS_W_RPX 一致（300rpx = 2 × 150rpx） */
+.dir-acts { width: 300rpx; }
+.dir-acts .act {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26rpx;
+  font-weight: 600;
+  white-space: nowrap;
+}
+/*
+ * 「隐藏」用中性灰而不是另一种强调色：
+ * 它是可逆的可见性开关，破坏性远低于删除，不该和删除抢红色。
+ */
+.dir-acts .act-toggle { background: #5b6570; color: #fff; }
+.dir-acts .act-del { background: var(--danger); color: #fff; }
+
+/* ---------- 区块 / 条目 ----------
+ * 按钮排列规则（.btn-row / .btn-col / .btn-grid）已全部收敛到 app.wxss，
+ * 页面内不再自定义，避免同一套按钮在不同面板里间距各异。 */
+.item-row.on { border-color: #1f4e79; }
+/*
+ * 选中底色必须是不透明实色。
+ * 用 rgba(31,78,121,0.05) 这类半透明色时，下面那层红色删除按钮会透出来，
+ * 未左滑的行看起来就像已经露出删除键——.row-del 的遮盖前提是内容面不透明。
+ * #f4f6f8 即该半透明色叠在白底上的等效实色。
+ */
+.item-row.on .item-face { background: #f4f6f8; }
+.item-idx {
+  flex: none;
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 20rpx;
+  background: #f0f3f7;
+  color: #5b6570;
+  font-size: 22rpx;
+  text-align: center;
+  line-height: 40rpx;
+}
+.item-line { display: flex; align-items: center; gap: 10rpx; }
+.item-preview { flex: 1; font-size: 25rpx; color: #23282f; }
+/* 抓手图标：目录行与条目行共用同一个「可长按拖动」的视觉线索 */
+.item-grip { flex: none; color: #c4cbd4; font-size: 28rpx; letter-spacing: 2rpx; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 12rpx; margin-bottom: 16rpx; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* 64rpx ≈ 34px / 44px 之间，配合列表间距足够好点；比原来的 40rpx 高一倍 */
+  min-height: 64rpx;
+  padding: 10rpx 24rpx;
+  border: 1px solid #d7dde5;
+  border-radius: 10rpx;
+  background: #f7f9fb;
+  font-size: 25rpx;
+  color: #5b6570;
+}
+.chip.on { background: #1f4e79; border-color: #1f4e79; color: #fff; }
+
+/* ---------- 条目排版：三个带示意图的选项 ----------
+ *
+ * 原来这里是三个纯文字 chip：「整行 / 左+右 / 左+中+右」。
+ * 那是排版术语，用户得先把它翻译成「学校 + 专业 + 时间」才敢点，
+ * 点完还要再到下面三个输入框里猜哪个框对应哪一栏。
+ *
+ * 现在每个选项画一张小示意图：格子里几条灰条代表文字落在纸面的位置，
+ * 一眼就能对上号。三格等分，触控高度 ≥44px。
+ */
+.shape-row {
+  display: flex;
+  gap: 16rpx;
+  margin-bottom: 16rpx;
+}
+.shape {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10rpx;
+  padding: 18rpx 10rpx 14rpx;
+  border: 1px solid var(--line-2);
+  border-radius: 12rpx;
+  background: var(--surface);
+}
+.shape.on {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  box-shadow: 0 0 0 3rpx var(--brand-ring);
+}
+/* 示意图：模拟一条条目在纸面上的排布，宽高固定，不随后面文字变化 */
+.shape-demo {
+  display: flex;
+  gap: 6rpx;
+  width: 100%;
+  height: 34rpx;
+  align-items: stretch;
+}
+.shape-line {
+  flex: 1 1 0;
+  min-width: 0;
+  border-radius: 4rpx;
+  background: #d7dde5;
+}
+.shape.on .shape-line { background: var(--brand); }
+.shape-label { font-size: 23rpx; color: var(--ink-2); text-align: center; }
+.shape.on .shape-label { color: var(--brand); font-weight: 600; }
+
+/* ---------- 基本信息 ---------- */
+.base-row {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  /* 每行本身就是一条足够高的触控带 */
+  min-height: 96rpx;
+  padding: 8rpx 0;
+  border-bottom: 1px solid #f2f4f7;
+}
+.base-row.off { opacity: 0.5; }
+.base-label { flex: none; width: 130rpx; font-size: 25rpx; color: #5b6570; }
+.base-input {
+  flex: 1;
+  min-width: 0;
+  height: 72rpx;
+  padding: 0 16rpx;
+  background: #f7f9fb;
+  border: 1px solid #eef1f5;
+  border-radius: 10rpx;
+  font-size: 26rpx;
+}
+.ph { color: #b6bdc6; }
+
+/*
+ * 开关：视觉尺寸保持 74×42rpx，但通过 ::after 把热区扩到 96rpx 见方。
+ * 直接放大视觉尺寸会破坏与输入框的对齐，而且太笨重；
+ * 透明伪元素扩热区是既不改观感、又能点得中的做法。
+ */
+.switch {
+  flex: none;
+  position: relative;
+  width: 74rpx;
+  height: 42rpx;
+  border-radius: 22rpx;
+  background: #d7dde5;
+  padding: 4rpx;
+  transition: background 0.16s;
+}
+.switch::after {
+  content: '';
+  position: absolute;
+  left: -14rpx;
+  right: -14rpx;
+  top: -24rpx;
+  bottom: -24rpx;
+}
+.switch.on { background: #1f4e79; }
+.knob {
+  width: 34rpx;
+  height: 34rpx;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.16s;
+}
+.switch.on .knob { transform: translateX(32rpx); }
+.switch-row { display: flex; align-items: center; justify-content: space-between; min-height: 96rpx; padding: 8rpx 0; }
+
+/* ---------- 样式 ---------- */
+.tpl-strip { white-space: nowrap; margin-bottom: 10rpx; width: 100%; }
+.tpl-chip {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 250rpx;
+  /* 与 chips 一致的可点高度，避免横向列表里点不中 */
+  min-height: 96rpx;
+  padding: 16rpx 18rpx;
+  margin-right: 14rpx;
+  border: 1px solid #d7dde5;
+  border-radius: 12rpx;
+  background: #fff;
+  vertical-align: top;
+}
+.tpl-chip.on { border-color: #1f4e79; box-shadow: 0 0 0 3rpx rgba(31, 78, 121, 0.16); }
+.tpl-chip-name { font-size: 27rpx; font-weight: 700; }
+.tpl-chip-desc { margin-top: 6rpx; font-size: 21rpx; color: var(--ink-3); }
+
+/* 彩点：底部有文字标签，需要额外下内边距，否则外层容器会切掉标签 */
+.colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20rpx 26rpx;
+  padding-bottom: 40rpx;
+  margin-bottom: 10rpx;
+}
+.color-dot {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  position: relative;
+  border: 3rpx solid transparent;
+}
+.color-dot.on { border-color: #23282f; }
+
+/* 自定义颜色：无填充，用虚线边与「＋」区分于 7 组预设 */
+.color-custom {
+  border: 3rpx dashed #c4cbd4;
+  background: transparent;
+  align-items: center;
+}
+.color-custom-plus { font-size: 34rpx; color: var(--ink-3); line-height: 1; }
+
+.color-name {
+  position: absolute;
+  bottom: -34rpx;
+  font-size: 20rpx;
+  color: #5b6570;
+  white-space: nowrap;
+}
+
+.picker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  /* 整行都是 picker 的触控区 */
+  min-height: 96rpx;
+  padding: 10rpx 0;
+  border-bottom: 1px solid #f2f4f7;
+}
+.picker-label { font-size: 26rpx; color: #5b6570; }
+.picker-value {
+  flex: 1;
+  min-width: 0;
+  padding: 12rpx 22rpx;
+  background: #f7f9fb;
+  border: 1px solid #eef1f5;
+  border-radius: 10rpx;
+  font-size: 26rpx;
+  text-align: right;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.slider-row { display: flex; align-items: center; gap: 12rpx; min-height: 88rpx; padding: 4rpx 0; }
+.slider-label { flex: none; width: 150rpx; font-size: 25rpx; color: #5b6570; }
+.slider { flex: 1; margin: 0; }
+.slider-val { flex: none; width: 96rpx; text-align: right; font-size: 24rpx; color: #23282f; }
+
+/* ---------- 照片 ---------- */
+.photo-preview { display: flex; align-items: center; gap: 24rpx; margin-bottom: 10rpx; }
+/* 照片右侧的两个操作走全局 .btn-col（纵向等宽），页面内不再自定义 */
+.photo-img { flex: none; background: #eceff2; }
+.photo-empty {
+  flex: none;
+  width: 180rpx;
+  height: 240rpx;
+  border: 1px dashed #c4cbd4;
+  border-radius: 10rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 23rpx;
+  color: var(--ink-3);
+}
+/* 照片右侧操作改用全局 .btn-col；让它撑满剩余宽度，
+   两个按钮各占整宽、触控区更大，右边缘也与面板内容对齐 */
+.photo-preview .btn-col { flex: 1; min-width: 0; }
+
+/* ---------- 浮层菜单的通用行样式（菜单已移到顶部，见 .menu-pop） ---------- */
+.menu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  /* 整行可点，高度对齐 96rpx 触控下限 */
+  min-height: 96rpx;
+  padding: 20rpx 24rpx;
+  font-size: 27rpx;
+  border-bottom: 1px solid #f2f4f7;
+}
+.menu-row:last-child { border-bottom: none; }
+.menu-arrow { color: #c4cbd4; font-size: 32rpx; }
+
+/* ---------- 离屏画布 ---------- */
+.export-canvas {
+  position: fixed;
+  left: -9999px;
+  top: 0;
+  width: 10px;
+  height: 10px;
+}

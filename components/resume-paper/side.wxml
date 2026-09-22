@@ -1,0 +1,20 @@
+<!-- 双栏布局的信息栏（被 paper.wxml 以 include 复用）
+     ★ data-* 同时挂在外层与文字叶子上：paper.js 的 onTap 读 e.target.dataset，
+     而点到字形时事件源是最内层的文字节点，dataset 不做继承，叶子没有属性
+     就会点击无效。详见 section.wxml 的同款说明。 -->
+<view class="side-photo" style="{{side.photoWrapStyle}}">
+  <image wx:if="{{photo.show}}" class="side-photo-img" src="{{photo.src}}" style="{{photo.style}}" mode="aspectFill" data-photo="1" />
+  <view wx:elif="{{photoSlot.show}}" class="photo-add" style="{{photoSlot.style}}" data-photo-add="1">
+    <text class="photo-add-plus" data-photo-add="1">＋</text>
+    <text class="photo-add-tip" data-photo-add="1">添加照片</text>
+  </view>
+</view>
+<view class="side-name {{side.nameEmpty ? 'is-empty' : ''}}" style="{{side.nameStyle}}" data-base="name">
+  <text wx:if="{{!side.nameEmpty}}" data-base="name">{{side.name}}</text>
+</view>
+<view class="side-list">
+  <view wx:for="{{side.list}}" wx:key="key" class="side-item" data-base="{{item.key}}">
+    <view class="side-dt" data-base="{{item.key}}">{{item.label}}</view>
+    <view class="side-dd" data-base="{{item.key}}">{{item.value}}</view>
+  </view>
+</view>

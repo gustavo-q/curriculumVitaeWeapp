@@ -1,0 +1,22 @@
+<!--
+  导航栏。
+  ★ 标题用绝对定位压在左右两侧之上做「真居中」：
+    若用 flex:1 + text-align:center，标题盒的可居中线是「(左返回键) 与
+    (右操作按钮) 之间」而非屏幕中心。右侧还要为胶囊让出约 104px，
+    实测下来标题中心会偏离屏幕中心 72.5px；而且右侧「导出 / 导出中」
+    文字长度一变，标题还会跟着抖 7px。绝对定位不参与这两者的分配。
+-->
+<view class="nav">
+  <view style="height:{{statusBarHeight}}px"></view>
+  <view class="nav-inner" style="height:{{barHeight}}px;{{innerStyle}}">
+    <view class="nav-left">
+      <view wx:if="{{back}}" class="nav-back" bindtap="onBack" hover-class="nav-hover">
+        <text class="nav-back-icon">‹</text>
+      </view>
+    </view>
+    <view class="nav-title">{{title}}</view>
+    <view class="nav-right">
+      <view wx:if="{{action}}" class="nav-action" bindtap="onAction" hover-class="nav-hover">{{action}}</view>
+    </view>
+  </view>
+</view>
