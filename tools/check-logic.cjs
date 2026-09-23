@@ -1381,6 +1381,21 @@ section('11. 编辑器：导出 PNG（走真实渲染器 + 桩 canvas）')
     (cLong.width * cLong.height / 1e6).toFixed(1) + 'M px')
   ok('降倍率后仍保底 1 倍（不糊到不可用）', outLong.scale >= 1, 'scale=' + outLong.scale)
 
+  /* ---- 多页 PDF 的页缝完整性：unitPlan 把跨缝单元搬到目标页 ---- */
+  const pagLong = L.paginateResume(longResume)
+  ok('超长简历 unitPlan 覆盖全部排版单元',
+    pagLong.unitPlan.length === longResume.sections[0].items.length,
+    'plan=' + pagLong.unitPlan.length)
+  let straddle = 0
+  for (const u of pagLong.unitPlan) {
+    const y = u.top + u.shift
+    for (let p = 1; p < pagLong.pages; p++) {
+      const seam = p * L.A4_H
+      if (y < seam && y + u.height > seam) straddle++
+    }
+  }
+  ok('应用位移计划后没有单元再横跨页缝（页缝不切文字）', straddle === 0, 'straddle=' + straddle)
+
   /* planScale 的边界：正常内容不应被限制 */
   const plan = render.planScale(store.state.resume, 1123, 2)
   ok('planScale 对 A4 单页不做限制', plan.limited === false && plan.scale === 2,

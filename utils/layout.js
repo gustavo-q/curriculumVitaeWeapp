@@ -732,12 +732,22 @@ function paginateResume (resume, params, opts) {
       units.push({ kind: 'section', id: box.id, top: box.titleTop, height: box.height })
       continue
     }
-    for (const it of box.items) units.push({ kind: 'item', id: it.id, top: it.y, height: it.height })
+    for (const it of box.items) units.push({ kind: 'item', id: it.id, top: it.y, height: it.height, secId: box.id })
   }
 
   const pushes = {}
   let wantSum = 0
   let page = 0
+  /*
+   * 单元位移计划（unitPlan）：按流式顺序记录每个排版单元最终应应用的
+   * 纵向位移 shift（含此前所有推挤量的累积）。
+   *
+   * 为什么需要它：pushes 只记录「推挤发生了多少」，但自然流里仍会有单元
+   * 横跨页缝（例如条目 y=1108、高 23，页缝 1123 正好从文字中间切过）。
+   * 逐页导出（PDF）据此把每个单元搬到它最终的页面上绘制，页缝永远落在
+   * 单元之间；长图 / 屏幕的连续流渲染不使用它，行为不变。
+   */
+  const unitPlan = []
   for (const u of units) {
     let top = u.top + wantSum
     // 先判溢出、再推进页码：反过来会让顶部已探出页底的单元被误判为「下一页的内容」
@@ -749,6 +759,14 @@ function paginateResume (resume, params, opts) {
       pushes[u.id] = Math.round(delta)
     }
     while (top + u.height > pageBottom(page)) page += 1
+    unitPlan.push({
+      kind: u.kind,
+      id: u.id,
+      secId: u.secId || '',
+      top: u.top,
+      height: u.height,
+      shift: wantSum
+    })
   }
 
   // 推挤后的内容底边
@@ -773,6 +791,7 @@ function paginateResume (resume, params, opts) {
   return {
     pages: total,
     pushes,
+    unitPlan,
     padBottom,
     minHeight: total * A4_H,
     contentBottom: bottom,

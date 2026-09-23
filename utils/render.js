@@ -32,6 +32,18 @@ function drawText (ctx, text, x, y, opt) {
   ctx.font = opt.font
   ctx.fillStyle = opt.color
   if (!ls) {
+    /*
+     * ★ 右对齐必须真的右对齐。
+     *
+     * fillText 默认从 x 起向右画（textAlign='start'），而右对齐栏传入的 x 是
+     * 「列的右边缘」——直接 fillText(s, x) 会把整行画到列外，导出图 / PDF 里
+     * 时间列、「精通」这类右栏全被纸边裁掉（屏幕预览走 CSS text-align:right，
+     * 所以只有导出能看到）。先量出整串宽度再从 x-w 起画，与逐字路径同口径。
+     */
+    if (opt.align === 'right') {
+      ctx.fillText(s, x - ctx.measureText(s).width, y)
+      return
+    }
     ctx.fillText(s, x, y)
     return
   }
@@ -424,12 +436,10 @@ async function renderToContext (ctx, canvas, resume, opts) {
  *
  * 分页口径与屏幕同源：
  *   · 几何来自同一次 layoutResume()，页数来自同一个 paginateResume()；
- *   · 屏幕上的纸面是一条连续流，页缝只是画在 y = p×A4_H 的视觉标记，
- *     内容从不位移 —— 因此第 p 页 = 内容坐标 [p·A4_H, (p+1)·A4_H) 的部分，
- *     把内容整体平移 -p·A4_H 后画进一张 A4 画布即可，页缝两侧的内容
- *     与预览所见完全一致（被推挤的单元在几何里本来就已移到下一页范围）。
- *   · 单页高度固定 A4_H，2 倍渲染是 1588×2246 像素，远低于长图那类
- *     4096/1670 万像素的 canvas 上限，因此倍率不受画布约束。
+ *   · 屏幕上的纸面是一条连续流，页缝只是画在 y = p×A4_H 的视觉标记；
+ *     但连续流里仍会有条目横跨页缝（页缝从文字中间切过）—— paginateResume
+ *   的 unitPlan 给出了每个排版单元（区块或条目）的最终纵向位移 shift，
+ *   逐页导出据此把单元绘制在它最终落位的位置上，页缝永远落在单元之间。
  *
  * @param {object} ctx     2D 上下文（多页复用同一个 canvas）
  * @param {object} canvas  canvas 节点（用于 createImage）
@@ -448,6 +458,7 @@ async function renderPagesToFiles (ctx, canvas, resume, opts) {
   const g = pag.layout
   const S = g.pageStyle || g.style
   const pages = pag.pages
+  const plan = pag.unitPlan || []
 
   const src = resolvePhoto(resume.personalPhoto)
   const img = src ? await loadImage(canvas, src) : null
@@ -462,14 +473,82 @@ async function renderPagesToFiles (ctx, canvas, resume, opts) {
     ctx.fillRect(0, 0, A4_W, A4_H)
 
     ctx.save()
-    ctx.translate(0, -p * A4_H)
-    // 边框按整页内容高度画：只有第 1 页会画到顶部，最后一页画到底部
-    drawPaperBorder(ctx, S.resume, (p + 1) * A4_H)
-    if (g.layout === 'SINGLE') drawHead(ctx, g, img)
-    else drawSide(ctx, g, img)
-    for (const sec of g.sections) {
-      drawSectionTitle(ctx, sec, S.resume)
-      drawSectionBody(ctx, sec, S)
+    // 本页要画的单元：位移后落在 [p*A4_H, (p+1)*A4_H) 内的那批。
+    // 页眉 / 侧栏（画在内容坐标系顶部）恒属第 1 页。
+    const lo = p * A4_H
+    const hi = (p + 1) * A4_H
+    const inPage = (top, shift, height) => {
+      const y = top + shift
+      // 与本页窗口有交集即画（canvas 自带裁剪，交叠的部分自然被裁掉）
+      return y < hi && y + height > lo
+    }
+    const plannedIds = new Set(plan.map((u) => u.id))
+    // 单元绘制辅助：把一个区块盒 / 条目盒画出来（titleTop 或 y 加 shift）
+    const drawSection = (sec, shift) => {
+      const moved = Object.assign({}, sec, {
+        titleTop: sec.titleTop + shift,
+        items: sec.items.map((it) => Object.assign({}, it, { y: it.y + shift }))
+      })
+      drawSectionTitle(ctx, moved, S.resume)
+      drawSectionBody(ctx, moved, S)
+    }
+    if (p === 0) {
+      drawPaperBorder(ctx, S.resume, pages * A4_H)
+      if (g.layout === 'SINGLE') drawHead(ctx, g, img)
+      else drawSide(ctx, g, img)
+      // 有计划的区块：只画位移后落在第 1 页窗口内的；整块直接画（canvas 裁剪兜底）
+      for (const sec of g.sections) {
+        const u = plan.find((x) => x.kind === 'section' && x.id === sec.id)
+        if (u && plannedIds.has(sec.id)) {
+          if (inPage(sec.titleTop, u.shift, sec.height)) drawSection(sec, u.shift)
+        } else if (inPage(sec.titleTop, 0, sec.height)) {
+          drawSection(sec, 0)
+        }
+      }
+      // 被拆成条目粒度的区块：按条目计划逐个画（避免整块越页）
+      for (const sec of g.sections) {
+        if (!plan.some((x) => x.kind === 'item' && x.secId === sec.id)) continue
+        for (const it of sec.items) {
+          const u = plan.find((x) => x.kind === 'item' && x.id === it.id)
+          if (!u) continue
+          const y = it.y + u.shift
+          if (y < hi && y + it.height > lo) {
+            const moved = Object.assign({}, sec, {
+              titleTop: sec.titleTop + u.shift,
+              items: [Object.assign({}, it, { y })]
+            })
+            // 拆分区块的标题跟随区块自身计划的位移画一次
+            drawSectionTitle(ctx, moved, S.resume)
+            drawSectionBody(ctx, moved, S)
+          }
+        }
+      }
+    } else {
+      drawPaperBorder(ctx, S.resume, (p + 1) * A4_H)
+      for (const sec of g.sections) {
+        const u = plan.find((x) => x.kind === 'section' && x.id === sec.id)
+        if (u && inPage(sec.titleTop, u.shift, sec.height)) {
+          drawSection(sec, u.shift)
+        } else if (!u && inPage(sec.titleTop, 0, sec.height)) {
+          drawSection(sec, 0)
+        }
+      }
+      for (const sec of g.sections) {
+        if (!plan.some((x) => x.kind === 'item' && x.secId === sec.id)) continue
+        for (const it of sec.items) {
+          const u = plan.find((x) => x.kind === 'item' && x.id === it.id)
+          if (!u) continue
+          const y = it.y + u.shift
+          if (y < hi && y + it.height > lo) {
+            const moved = Object.assign({}, sec, {
+              titleTop: sec.titleTop + u.shift,
+              items: [Object.assign({}, it, { y })]
+            })
+            drawSectionTitle(ctx, moved, S.resume)
+            drawSectionBody(ctx, moved, S)
+          }
+        }
+      }
     }
     ctx.restore()
 
