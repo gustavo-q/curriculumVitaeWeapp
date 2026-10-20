@@ -4,31 +4,277 @@
   bar-height="{{navBarHeight}}"
 />
 
-<view class="bar">
-  <view class="bar-left">
-    <text class="pages {{pages > 1 ? 'multi' : ''}}">共 {{pages}} 页</text>
-    <text class="hint">A4 · 794 × 1123</text>
-  </view>
-  <!-- 顶栏操作是「就地次要操作」，按内容宽靠右排列（.btn-row-auto），
-       不与左侧页数信息抢宽度；间距走全局统一值。
-       导出入口收在「导出 ▾」一个按钮里（ActionSheet 列出 PDF / Word /
-       长图 / JSON），顶栏不再被一排导出按钮占满。 -->
-  <view class="bar-right btn-row btn-row-auto">
-    <view class="btn btn-sm {{exporting ? 'off' : ''}}" bindtap="onExportMenu" hover-class="tap-hover">
-      <text>{{exporting ? '导出中…' : '导出 ▾'}}</text>
+<!-- 纸面舞台：scroll-view 双向滚动；缩放 = 改 transform 倍率 + 同步舞台尺寸 -->
+<view class="stage-box">
+  <scroll-view
+    class="stage"
+    scroll-x
+    scroll-y
+    scroll-top="{{scrollTop}}"
+    scroll-left="{{scrollLeft}}"
+    bindscroll="onStageScroll"
+  >
+    <view
+      class="stage-inner"
+      style="width:{{stageW}}px;height:{{stageH}}px"
+      bindtap="onStageTap"
+      bindtouchstart="onPinchStart"
+      bindtouchmove="onPinchMove"
+      bindtouchend="onPinchEnd"
+      bindtouchcancel="onPinchEnd"
+    >
+      <view class="zoom-wrap" style="left:{{stagePad}}px;top:{{stagePad}}px;transform:scale({{zoom}})">
+        <resume-paper vm="{{vm}}" seams="{{seams}}" bindpick="onPaperPick" />
+      </view>
     </view>
-    <view class="btn btn-sm btn-primary" bindtap="onEdit" hover-class="tap-hover">去编辑</view>
+  </scroll-view>
+
+  <!-- 浮层信息：页数 + 缩放 -->
+  <view class="hud">
+    <text class="hud-pages {{pages > 1 ? 'multi' : ''}}">共 {{pages}} 页</text>
+    <view class="hud-zoom" bindtap="onZoomBtn" hover-class="tap-hover">{{zoomed ? zoomPct + '% · 还原' : '双击放大'}}</view>
+  </view>
+  <view wx:if="{{!readonly && !sheet}}" class="hint-tip">点纸面任意区块，回到对应表单修改</view>
+</view>
+
+<!-- 底栏：样式 / 一页 / 导出 -->
+<view wx:if="{{!readonly}}" class="bottom-bar">
+  <view class="bb-btn {{sheet === 'style' ? 'on' : ''}}" bindtap="onOpenStyle" hover-class="tap-hover">
+    <text class="bb-ico">Aa</text>
+    <text class="bb-txt">样式</text>
+  </view>
+  <view class="bb-btn" bindtap="onSmartFit" hover-class="tap-hover">
+    <text class="bb-ico">⇲</text>
+    <text class="bb-txt">一页</text>
+  </view>
+  <view class="bb-btn bb-primary {{sheet === 'export' ? 'on' : ''}}" bindtap="onOpenExport" hover-class="tap-hover">
+    <text class="bb-ico">↗</text>
+    <text class="bb-txt">导出</text>
   </view>
 </view>
 
-<scroll-view class="stage" scroll-y>
-  <view class="stage-inner" style="height:{{paperBoxH * zoom}}px">
-    <view class="zoom-wrap" style="transform:scale({{zoom}})">
-      <resume-paper vm="{{vm}}" seams="{{seams}}" />
+<!-- 遮罩：样式面板用浅遮罩，保证改动时能看到纸面 -->
+<view wx:if="{{sheet}}" class="mask {{sheet === 'style' ? 'mask-light' : ''}}" bindtap="closeSheet" catchtouchmove="noop"></view>
+
+<!-- ============ 样式面板 ============ -->
+<view wx:if="{{sheet === 'style'}}" class="sheet sheet-style">
+  <view class="sheet-head">
+    <text class="sheet-title">样式</text>
+    <view class="sheet-acts">
+      <view class="mini-btn {{canUndo ? '' : 'off'}}" bindtap="onUndo" hover-class="tap-hover">撤销</view>
+      <view class="mini-btn {{canRedo ? '' : 'off'}}" bindtap="onRedo" hover-class="tap-hover">重做</view>
+      <view class="mini-btn" bindtap="closeSheet" hover-class="tap-hover">完成</view>
     </view>
   </view>
-  <view style="height:60rpx"></view>
-</scroll-view>
 
-<!-- 导出用的离屏画布：尺寸由渲染器按导出倍率设定 -->
+  <scroll-view class="tabs" scroll-x enable-flex>
+    <view
+      wx:for="{{styleTabs}}"
+      wx:key="id"
+      class="tab {{styleTab === item.id ? 'on' : ''}}"
+      data-id="{{item.id}}"
+      bindtap="onStyleTab"
+    >{{item.label}}</view>
+  </scroll-view>
+
+  <scroll-view class="sheet-body" scroll-y>
+    <!-- 配色 -->
+    <view wx:if="{{styleTab === 'color'}}" class="swatches">
+      <view
+        wx:for="{{colors}}"
+        wx:key="id"
+        class="swatch {{style.colorId === item.id ? 'on' : ''}}"
+        data-id="{{item.id}}"
+        bindtap="onColor"
+        hover-class="tap-hover"
+      >
+        <view class="swatch-dot" style="background:{{item.value}}">
+          <view class="swatch-dot2" style="background:{{item.second}}"></view>
+        </view>
+        <text class="swatch-name">{{item.label}}</text>
+      </view>
+    </view>
+
+    <!-- 字体 -->
+    <view wx:if="{{styleTab === 'font'}}" class="opt-list">
+      <view
+        wx:for="{{fonts}}"
+        wx:key="id"
+        class="opt {{style.fontFamily === item.id ? 'on' : ''}}"
+        data-id="{{item.id}}"
+        bindtap="onFont"
+        hover-class="tap-hover"
+      >
+        <text class="opt-sample" style="font-family:{{item.stack}}">简历 Resume</text>
+        <text class="opt-label">{{item.label}}</text>
+      </view>
+    </view>
+
+    <!-- 标题装饰（9 种小样） -->
+    <view wx:if="{{styleTab === 'heading'}}" class="hs-grid">
+      <view
+        wx:for="{{headings}}"
+        wx:key="id"
+        class="hs-cell {{style.headingTheme === item.id ? 'on' : ''}}"
+        data-id="{{item.id}}"
+        bindtap="onHeading"
+        hover-class="tap-hover"
+      >
+        <view class="hs-box">
+          <view class="hs-title {{item.cls}}" style="{{item.style}}">工作经历</view>
+          <view class="hs-line1"></view>
+          <view class="hs-line2"></view>
+        </view>
+        <text class="hs-name">{{item.label}}</text>
+      </view>
+    </view>
+
+    <!-- 布局 -->
+    <view wx:if="{{styleTab === 'layout'}}" class="layout-row">
+      <view
+        wx:for="{{layouts}}"
+        wx:key="id"
+        class="layout-cell {{style.pageLayout === item.id ? 'on' : ''}}"
+        data-id="{{item.id}}"
+        bindtap="onLayout"
+        hover-class="tap-hover"
+      >
+        <view class="lg lg-{{item.id}}">
+          <view class="lg-side" style="background:{{style.headingColor}}"></view>
+          <view class="lg-main">
+            <view class="lg-bar"></view>
+            <view class="lg-bar short"></view>
+            <view class="lg-bar"></view>
+          </view>
+        </view>
+        <text class="layout-name">{{item.label}}</text>
+      </view>
+    </view>
+
+    <!-- 尺寸 -->
+    <view wx:if="{{styleTab === 'size'}}" class="sliders">
+      <view wx:for="{{sliders}}" wx:key="key" class="slider-row">
+        <text class="slider-label">{{item.label}}</text>
+        <slider
+          class="slider"
+          min="{{item.min}}"
+          max="{{item.max}}"
+          step="{{item.step}}"
+          value="{{item.value}}"
+          activeColor="#1f4e79"
+          block-size="20"
+          data-key="{{item.key}}"
+          bindchanging="onSliderChanging"
+          bindchange="onSliderChange"
+        />
+        <text class="slider-val">{{item.value}}{{item.unit}}</text>
+      </view>
+    </view>
+
+    <!-- 模板 -->
+    <view wx:if="{{styleTab === 'template'}}">
+      <scroll-view class="tpl-strip" scroll-x enable-flex>
+        <view
+          wx:for="{{templates}}"
+          wx:key="id"
+          class="tpl-thumb {{style.templateId === item.id ? 'on' : ''}}"
+          data-id="{{item.id}}"
+          bindtap="onTemplatePick"
+          hover-class="tap-hover"
+        >
+          <view class="tt-paper tt-{{item.layout}}">
+            <view class="tt-side" style="background:{{item.brand}}"></view>
+            <view class="tt-main">
+              <view class="tt-head" style="background:{{item.brand}}"></view>
+              <view class="tt-bar"></view>
+              <view class="tt-bar short"></view>
+              <view class="tt-head" style="background:{{item.second}}"></view>
+              <view class="tt-bar"></view>
+            </view>
+          </view>
+          <text class="tt-name">{{item.name}}</text>
+          <text class="tt-badge">{{item.layoutLabel}}</text>
+        </view>
+      </scroll-view>
+      <view class="all-tpl" bindtap="onAllTemplates" hover-class="tap-hover">全部模板（用我的内容预览）›</view>
+    </view>
+  </scroll-view>
+</view>
+
+<!-- ============ 一页结果 ============ -->
+<view wx:if="{{sheet === 'fit'}}" class="sheet sheet-fit">
+  <view class="sheet-head">
+    <text class="sheet-title">智能排版</text>
+    <text class="fit-pages">现为 {{fit.pages}} 页</text>
+  </view>
+  <view class="fit-msg">{{fit.message}}</view>
+  <view class="fit-rows">
+    <view wx:for="{{fit.rows}}" wx:key="key" class="fit-row">
+      <text class="fit-k">{{item.label}}</text>
+      <text class="fit-v">{{item.from}} → <text class="{{item.down ? 'down' : 'up'}}">{{item.to}}</text></text>
+    </view>
+  </view>
+  <view class="sheet-foot">
+    <view class="btn {{fit.canRestore ? '' : 'off'}}" bindtap="onFitRestore" hover-class="tap-hover">还原</view>
+    <view class="btn btn-primary" bindtap="closeSheet" hover-class="tap-hover">好的</view>
+  </view>
+</view>
+
+<!-- ============ 导出面板 ============ -->
+<view wx:if="{{sheet === 'export'}}" class="sheet sheet-export">
+  <view class="sheet-head">
+    <text class="sheet-title">导出</text>
+    <view class="mini-btn" bindtap="closeSheet" hover-class="tap-hover">关闭</view>
+  </view>
+
+  <view wx:if="{{readyShare}}" class="ready">
+    <view class="ready-txt">已生成「{{readyShare.fileName}}」</view>
+    <view class="btn btn-primary" bindtap="onShareReady" hover-class="tap-hover">发送给微信好友</view>
+  </view>
+
+  <view class="ex-list">
+    <view class="ex-row ex-hero {{exporting ? 'off' : ''}}" bindtap="onSharePdf" hover-class="tap-hover">
+      <text class="ex-ico">✉</text>
+      <view class="ex-main">
+        <text class="ex-title">发给微信好友</text>
+        <text class="ex-sub">{{canShare ? '生成 PDF，直接转发给 HR / 自己' : '生成 PDF 后在右上角「…」里转发'}}</text>
+      </view>
+      <text class="ex-tag">PDF</text>
+    </view>
+    <view class="ex-row {{exporting ? 'off' : ''}}" bindtap="onOpenPdf" hover-class="tap-hover">
+      <text class="ex-ico">▤</text>
+      <view class="ex-main">
+        <text class="ex-title">保存 PDF / 打开</text>
+        <text class="ex-sub">预览、打印或用其他应用打开</text>
+      </view>
+    </view>
+    <view class="ex-row {{exporting ? 'off' : ''}}" bindtap="onShareWord" hover-class="tap-hover">
+      <text class="ex-ico">W</text>
+      <view class="ex-main">
+        <text class="ex-title">Word 文档</text>
+        <text class="ex-sub">.doc，可用 WPS / Word 继续编辑</text>
+      </view>
+    </view>
+    <view class="ex-row {{exporting ? 'off' : ''}}" bindtap="onSaveImage" hover-class="tap-hover">
+      <text class="ex-ico">▣</text>
+      <view class="ex-main">
+        <text class="ex-title">PNG 长图存相册</text>
+        <text class="ex-sub">适合发朋友圈或直接看图</text>
+      </view>
+    </view>
+    <view class="ex-row ex-json">
+      <text class="ex-ico">{ }</text>
+      <view class="ex-main">
+        <text class="ex-title">JSON 备份</text>
+        <text class="ex-sub">与电脑端互通：网页版可直接导入</text>
+      </view>
+      <view class="ex-btns">
+        <view class="mini-btn" catchtap="onCopyJson" hover-class="tap-hover">复制</view>
+        <view class="mini-btn mini-primary {{exporting ? 'off' : ''}}" catchtap="onShareJson" hover-class="tap-hover">发到聊天</view>
+      </view>
+    </view>
+  </view>
+</view>
+
+<!-- 导出用的离屏画布 -->
 <canvas type="2d" id="exportCanvas" class="export-canvas"></canvas>

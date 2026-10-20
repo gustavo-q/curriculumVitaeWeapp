@@ -1,0 +1,81 @@
+<nav-bar title="投递记录" back="{{false}}" status-bar-height="{{statusBarHeight}}" bar-height="{{navBarHeight}}" />
+
+<!-- 分段：已投 / 面试中 / 已结束（计数随简历筛选变化） -->
+<view class="seg-wrap">
+  <view class="seg">
+    <view wx:for="{{segments}}" wx:key="id" class="seg-item {{seg === item.id ? 'on' : ''}}" data-id="{{item.id}}" bindtap="onSeg" hover-class="tap-hover">
+      <text>{{item.label}}</text>
+      <text class="seg-count">{{item.count}}</text>
+    </view>
+  </view>
+  <view wx:if="{{showFilter}}" class="filter-row">
+    <picker mode="selector" range="{{filterNames}}" value="{{filterIndex}}" bindchange="onFilter">
+      <view class="chip {{filterId ? 'chip-on' : ''}}" hover-class="tap-hover">
+        <text class="ellipsis chip-text">{{filterLabel}}</text>
+        <text class="chip-caret">▾</text>
+      </view>
+    </picker>
+    <view wx:if="{{filterId}}" class="chip-clear" bindtap="onClearFilter" hover-class="tap-hover">清除筛选</view>
+  </view>
+</view>
+
+<view class="body">
+  <!-- 一条都没有：讲清楚这个功能怎么用 -->
+  <view wx:if="{{!total}}" class="empty card">
+    <view class="empty-icon">📮</view>
+    <view class="empty-title">还没有投递记录</view>
+    <view class="empty-steps">
+      <view class="step"><text class="step-n">1</text><text>复制招聘 App 里的岗位描述，到「JD 匹配」看简历缺哪些关键词</text></view>
+      <view class="step"><text class="step-n">2</text><text>补好简历、发出去后点「记一笔投递」，公司和岗位自动带上</text></view>
+      <view class="step"><text class="step-n">3</text><text>约到面试就改成「面试中」，面试时间可以加到手机日历提醒</text></view>
+    </view>
+    <view class="btn-row">
+      <view class="btn btn-primary" bindtap="onGoMatch" hover-class="tap-hover">去匹配 JD</view>
+      <view class="btn" bindtap="onAdd" hover-class="tap-hover">手动记一笔</view>
+    </view>
+  </view>
+
+  <view wx:elif="{{!list.length}}" class="seg-empty">
+    <text wx:if="{{seg === 'applied'}}">这里还没有待回复的投递</text>
+    <text wx:elif="{{seg === 'interviewing'}}">还没有进入面试的投递，约到面试后左滑卡片改状态</text>
+    <text wx:else>还没有已结束的投递</text>
+  </view>
+
+  <view wx:for="{{list}}" wx:key="id" class="row">
+    <!-- 左滑露出的操作 -->
+    <view class="row-acts">
+      <view class="act act-status" data-id="{{item.id}}" bindtap="onChangeStatus" hover-class="tap-hover">改状态</view>
+      <view class="act act-del" data-id="{{item.id}}" bindtap="onDelete" hover-class="tap-hover">删除</view>
+    </view>
+    <view
+      class="tcard {{item.d ? 'dragging' : ''}}"
+      style="transform: translateX({{item.x}}px)"
+      data-id="{{item.id}}"
+      bindtouchstart="onTouchStart"
+      bindtouchmove="onTouchMove"
+      bindtouchend="onTouchEnd"
+      bindtouchcancel="onTouchEnd"
+      bindtap="onCardTap"
+      hover-class="tcard-hover"
+    >
+      <view class="tcard-top">
+        <view class="tcard-title ellipsis">{{item.company}} · {{item.role}}</view>
+        <view class="pill pill-{{item.status}}">{{item.statusLabel}}</view>
+      </view>
+      <view class="tcard-meta">
+        <text class="ellipsis meta-resume">用：{{item.resumeName}}</text>
+        <text class="meta-date">{{item.appliedAt}} 投递</text>
+      </view>
+      <view wx:if="{{item.interview}}" class="tcard-iv {{item.interviewSoon ? 'soon' : ''}} {{item.interviewPast ? 'past' : ''}}">
+        <text>面试 {{item.interview}}</text>
+        <text wx:if="{{item.interviewSoon}}" class="iv-tag">即将开始</text>
+        <text wx:elif="{{item.interviewPast}}" class="iv-tag">已过</text>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{list.length}}" class="hint muted small">左滑卡片可改状态或删除</view>
+  <view class="fab-space"></view>
+</view>
+
+<view class="fab" bindtap="onAdd" hover-class="tap-hover" aria-role="button" aria-label="记一笔投递">＋</view>

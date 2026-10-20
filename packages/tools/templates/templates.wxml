@@ -1,0 +1,74 @@
+<nav-bar title="模板库" status-bar-height="{{statusBarHeight}}" bar-height="{{navBarHeight}}" />
+
+<view class="top">
+  <view class="indicator">
+    <text class="ind-no">{{current + 1}}/{{total}}</text>
+    <text class="ind-name">{{slides[current].name}}</text>
+    <text class="ind-badge">{{slides[current].layoutLabel}}</text>
+  </view>
+  <view class="grid-toggle" bindtap="onToggleGrid" hover-class="tap-hover">{{grid ? '滑动看' : '看全部'}}</view>
+</view>
+<view class="sub">{{noResume ? '用示例内容预览，选好后直接新建' : '用你的简历内容预览 · 换模板不改已填内容'}}</view>
+
+<!-- ============ 滑动预览 ============ -->
+<swiper
+  wx:if="{{!grid}}"
+  class="swiper"
+  style="height:{{slideH + 24}}px"
+  current="{{current}}"
+  previous-margin="48rpx"
+  next-margin="48rpx"
+  bindchange="onSwiper"
+>
+  <swiper-item wx:for="{{slides}}" wx:key="id" class="slide">
+    <view class="paper-frame {{index === current ? 'is-cur' : ''}}" style="width:{{794 * slideScale}}px;height:{{slideH}}px">
+      <view wx:if="{{item.vm}}" class="paper-scale" style="transform:scale({{slideScale}})">
+        <resume-paper vm="{{item.vm}}" />
+      </view>
+      <view wx:else class="ph">
+        <view class="ph-bar" style="background:{{item.brand}}"></view>
+        <view class="ph-line"></view>
+        <view class="ph-line short"></view>
+        <view class="ph-line"></view>
+        <text class="ph-name">{{item.name}}</text>
+      </view>
+      <view wx:if="{{appliedId === item.id}}" class="cur-badge">使用中</view>
+      <view wx:if="{{item.pages > 1}}" class="pages-badge">共 {{item.pages}} 页 · 仅显示首页</view>
+    </view>
+  </swiper-item>
+</swiper>
+
+<!-- ============ 网格 ============ -->
+<scroll-view wx:else class="grid-scroll" scroll-y>
+  <view class="grid">
+    <view
+      wx:for="{{gridItems}}"
+      wx:key="id"
+      class="g-cell {{currentId === item.id ? 'on' : ''}}"
+      data-id="{{item.id}}"
+      bindtap="onGridPick"
+      hover-class="tap-hover"
+    >
+      <view class="g-frame" style="height:{{gridH}}px">
+        <view wx:if="{{item.vm}}" class="paper-scale" style="transform:scale({{gridScale}})">
+          <resume-paper vm="{{item.vm}}" />
+        </view>
+        <view wx:else class="ph"><view class="ph-bar" style="background:{{item.brand}}"></view></view>
+        <view wx:if="{{appliedId === item.id}}" class="cur-badge">使用中</view>
+      </view>
+      <view class="g-meta">
+        <text class="g-name">{{item.name}}</text>
+        <text class="g-badge">{{item.layoutLabel}}</text>
+      </view>
+    </view>
+  </view>
+</scroll-view>
+
+<view wx:if="{{!grid}}" class="desc">{{slides[current].desc}}</view>
+
+<view class="foot">
+  <view wx:if="{{!noResume}}" class="btn foot-sec" bindtap="onNewWith" hover-class="tap-hover">用它新建</view>
+  <view class="btn btn-primary foot-main {{appliedId === currentId ? 'off' : ''}}" bindtap="onUse" hover-class="tap-hover">
+    {{noResume ? '用这套新建简历' : (appliedId === currentId ? '正在使用' : '用这套')}}
+  </view>
+</view>

@@ -1,0 +1,46 @@
+<nav-bar title="我的" back="{{false}}" status-bar-height="{{statusBarHeight}}" bar-height="{{navBarHeight}}" />
+
+<view class="body">
+  <view class="head card">
+    <view class="head-title">求职进度</view>
+    <view class="stats">
+      <view class="stat" bindtap="onGoResumes" hover-class="tap-hover">
+        <view class="stat-num">{{resumeCount}}</view>
+        <view class="stat-label">简历</view>
+      </view>
+      <view class="stat" bindtap="onGoTracks" hover-class="tap-hover">
+        <view class="stat-num">{{trackCount}}</view>
+        <view class="stat-label">投递</view>
+      </view>
+      <view class="stat" bindtap="onGoTracks" hover-class="tap-hover">
+        <view class="stat-num {{interviewCount ? 'hot' : ''}}">{{interviewCount}}</view>
+        <view class="stat-label">面试中</view>
+      </view>
+    </view>
+    <view class="head-line small">简历 {{resumeCount}} 份 · 投递 {{trackCount}} 条 · 面试中 {{interviewCount}}</view>
+  </view>
+
+  <view class="cells card">
+    <view wx:for="{{cells}}" wx:key="id" class="cell" data-id="{{item.id}}" bindtap="onCell" hover-class="tap-hover-bg">
+      <text class="cell-icon">{{item.icon}}</text>
+      <view class="cell-main">
+        <view class="cell-title">{{item.title}}</view>
+        <view class="cell-sub ellipsis">{{item.sub}}</view>
+      </view>
+      <text class="cell-arrow">›</text>
+    </view>
+    <view class="cell" bindtap="onToggleAbout" hover-class="tap-hover-bg">
+      <text class="cell-icon">ℹ️</text>
+      <view class="cell-main">
+        <view class="cell-title">关于</view>
+        <view class="cell-sub">版本 {{version}}</view>
+      </view>
+      <text class="cell-arrow {{aboutOpen ? 'open' : ''}}">›</text>
+    </view>
+    <view wx:if="{{aboutOpen}}" class="about">
+      <view class="about-name">简历制作 · v{{version}}</view>
+      <view class="about-line">所有数据只保存在手机本地，不联网、不上传。</view>
+      <view class="about-line muted">简历数据与网页版结构一致，可通过「数据备份与恢复」在电脑和手机之间互通。删除小程序或清理微信缓存会清掉本地数据，记得定期备份。</view>
+    </view>
+  </view>
+</view>

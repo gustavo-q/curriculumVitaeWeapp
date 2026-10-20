@@ -1,0 +1,125 @@
+<nav-bar title="JD 匹配" status-bar-height="{{statusBarHeight}}" bar-height="{{navBarHeight}}" />
+
+<!-- 剪贴板里像是岗位描述：一键粘贴 -->
+<view wx:if="{{clipOffer}}" class="clip">
+  <view class="clip-main" bindtap="onPasteClip" hover-class="tap-hover">
+    <view class="clip-title">检测到剪贴板里的岗位描述，一键粘贴</view>
+    <view class="clip-sub ellipsis">{{clipPreview}}</view>
+  </view>
+  <view class="clip-x" bindtap="onDismissClip" hover-class="tap-hover" aria-label="忽略">×</view>
+</view>
+
+<view class="body">
+  <view wx:if="{{!hasDrafts}}" class="card empty">
+    <view class="empty-title">还没有简历可以对比</view>
+    <view class="muted small">先新建一份简历，再回来粘贴岗位描述。</view>
+    <view class="btn-row mt">
+      <view class="btn btn-primary" bindtap="onGoCreate" hover-class="tap-hover">去新建简历</view>
+    </view>
+  </view>
+
+  <block wx:else>
+    <view class="card group">
+      <view class="row pick-row">
+        <text class="pick-label">对比简历</text>
+        <picker class="grow" mode="selector" range="{{resumeNames}}" value="{{resumeIndex}}" bindchange="onResume">
+          <view class="pick-val">
+            <text class="ellipsis grow">{{resumeNames[resumeIndex]}}</text>
+            <text class="caret">›</text>
+          </view>
+        </picker>
+      </view>
+      <view wx:if="{{dirtyTip}}" class="dirty-tip">当前简历有未保存改动，匹配基于草稿数据</view>
+
+      <textarea
+        class="jd-input"
+        value="{{jd}}"
+        bindinput="onJdInput"
+        placeholder="把招聘 App 里的岗位描述粘贴到这里…"
+        maxlength="8000"
+        auto-height
+      />
+      <view class="btn-row">
+        <view wx:if="{{jd}}" class="btn btn-ghost clear" bindtap="onClearJd" hover-class="tap-hover">清空</view>
+        <view class="btn btn-primary" bindtap="onMatch" hover-class="tap-hover">{{result ? '重新匹配' : '匹配'}}</view>
+      </view>
+    </view>
+
+    <!-- 结果 -->
+    <view wx:if="{{result}}" class="card group">
+      <view wx:if="{{stale}}" class="stale" bindtap="onMatch" hover-class="tap-hover">内容已修改，点这里更新结果</view>
+
+      <view wx:if="{{result.summary.denomZero}}" class="nokw">
+        <view class="nokw-main">未从这段 JD 中提取到有效关键词</view>
+        <view class="muted small">可能都是停用词或格式问题，换一段试试，或在下方补充关键词。</view>
+      </view>
+
+      <block wx:else>
+        <view class="score">
+          <view class="ring" style="{{ringStyle}}">
+            <view class="ring-in">
+              <text class="ring-num">{{coverage}}</text><text class="ring-pct">%</text>
+            </view>
+          </view>
+          <view class="score-side">
+            <view class="score-title">关键词覆盖 {{result.summary.matched}} / {{result.summary.total}}</view>
+            <view class="score-line"><text class="dot dot-hit"></text>命中 {{result.summary.hit}}</view>
+            <view class="score-line"><text class="dot dot-weak"></text>弱匹配 {{result.summary.weak}}</view>
+            <view class="score-line"><text class="dot dot-miss"></text>缺失 {{result.summary.miss}}</view>
+          </view>
+        </view>
+
+        <view wx:if="{{result.summary.weak || result.summary.miss}}" class="hint">点「弱匹配 / 缺失」的词：自动复制，并跳到最可能该补的区块</view>
+        <view wx:else class="allhit">全部命中，这份简历和岗位很对口</view>
+
+        <block wx:for="{{result.groups}}" wx:for-item="g" wx:key="id">
+        <view wx:if="{{g.items.length}}" class="kgroup">
+          <view class="kgroup-title">
+            <text class="mk mk-{{g.id}}">{{g.id === 'hit' ? '✓' : g.id === 'weak' ? '~' : '缺'}}</text>
+            {{g.label}} · {{g.items.length}}
+          </view>
+          <view class="chips">
+            <view
+              wx:for="{{g.items}}"
+              wx:for-item="w"
+              wx:key="*this"
+              class="kchip kchip-{{g.id}}"
+              data-w="{{w}}"
+              data-g="{{g.id}}"
+              bindtap="onKeyword"
+              hover-class="{{g.id === 'hit' ? '' : 'tap-hover'}}"
+            >{{w}}</view>
+          </view>
+        </view>
+        </block>
+      </block>
+    </view>
+
+    <view wx:else class="card group legend">
+      <view class="legend-row"><text class="mk mk-hit">✓</text>命中 —— 简历里已有这个词</view>
+      <view class="legend-row"><text class="mk mk-weak">~</text>弱匹配 —— 只出现了一部分</view>
+      <view class="legend-row"><text class="mk mk-miss">缺</text>缺失 —— 简历里没有，投递前考虑补</view>
+      <view class="muted small legend-tip">全程在手机本地比对，岗位描述不会上传。</view>
+    </view>
+
+    <!-- 自定义关键词 -->
+    <view class="card group">
+      <text class="field-label">补充关键词（JD 里没抽到、但你关心的词）</text>
+      <view class="row gap12">
+        <input class="field-input grow" value="{{newTerm}}" bindinput="onTermInput" bindconfirm="onAddTerm" confirm-type="done" placeholder="例如：TypeScript" maxlength="40" />
+        <view class="btn btn-sm add" bindtap="onAddTerm" hover-class="tap-hover">添加</view>
+      </view>
+      <view wx:if="{{customTerms.length}}" class="chips terms">
+        <view wx:for="{{customTerms}}" wx:key="*this" class="kchip term" data-w="{{item}}" bindtap="onRemoveTerm" hover-class="tap-hover">{{item}} <text class="x">×</text></view>
+      </view>
+      <view class="muted small terms-note">词表只保存在本机（{{customTerms.length}} 个），不会进入简历备份</view>
+    </view>
+
+    <view class="bottom-space"></view>
+  </block>
+</view>
+
+<view wx:if="{{hasDrafts}}" class="bar">
+  <view class="btn btn-primary btn-wide-bar" bindtap="onTrack" hover-class="tap-hover">记一笔投递</view>
+  <view class="safe-bottom"></view>
+</view>

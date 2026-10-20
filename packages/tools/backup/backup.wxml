@@ -1,0 +1,62 @@
+<nav-bar title="数据备份与恢复" status-bar-height="{{statusBarHeight}}" bar-height="{{navBarHeight}}" />
+
+<!-- 导入预览：确认前零写盘 -->
+<view wx:if="{{view === 'preview'}}" class="body">
+  <view class="card group">
+    <view class="pv-title ellipsis">导入预览 · {{source}}</view>
+    <view class="pv-sum">将新增 {{total}} 份<text wx:if="{{dupCount}}">，其中 {{dupCount}} 份与现有简历同名</text></view>
+    <view class="pv-list">
+      <view wx:for="{{rows}}" wx:key="key" class="pv-row {{item.dup ? 'dup' : ''}}">
+        <text class="pv-mark">{{item.dup ? '⚠' : '·'}}</text>
+        <text class="ellipsis grow">{{item.name}}</text>
+        <text class="pv-sub">{{item.dup ? '同名' : '新增'}}</text>
+      </view>
+    </view>
+    <view class="muted small">导入后这 {{total}} 份会全部加到列表最前面，各自获得新编号，不会覆盖现有简历。</view>
+  </view>
+  <view class="btn-col">
+    <view class="btn btn-primary" bindtap="onConfirmImport" hover-class="tap-hover">{{dupCount ? '仍要导入' : '导入'}} {{total}} 份</view>
+    <view wx:if="{{dupCount && dupCount < total}}" class="btn" bindtap="onImportSkipDup" hover-class="tap-hover">只导入新增的 {{total - dupCount}} 份（跳过同名）</view>
+    <view class="btn btn-ghost" bindtap="onCancelImport" hover-class="tap-hover">取消</view>
+  </view>
+  <view class="safe-bottom"></view>
+</view>
+
+<view wx:else class="body">
+  <view class="card group">
+    <view class="usage-row">
+      <view class="usage-title">本机存储</view>
+      <view class="usage-text">{{storage}}</view>
+    </view>
+    <view class="bar"><view class="bar-fill {{storagePct >= 90 ? 'danger' : storagePct >= 70 ? 'warn' : ''}}" style="width: {{storagePct}}%"></view></view>
+    <view class="muted small">简历 {{draftCount}} 份 · 投递记录 {{trackCount}} 条</view>
+  </view>
+
+  <view class="sect-title"><view class="bar-mark"></view>备份全部简历</view>
+  <view class="card group">
+    <view class="desc">备份文件与网页版通用：在电脑上打开网页版「数据管家」即可导入。投递记录只保存在本机，不进备份。</view>
+    <view class="btn-col">
+      <view class="btn btn-primary" bindtap="onShareBackup" hover-class="tap-hover">{{canShareFile ? '发到微信聊天（.json 文件）' : '发到微信聊天（当前版本不支持）'}}</view>
+      <view class="btn" bindtap="onCopyBackup" hover-class="tap-hover">复制备份内容</view>
+    </view>
+  </view>
+
+  <view class="sect-title"><view class="bar-mark"></view>恢复</view>
+  <view class="card group">
+    <view class="desc">导入前会先列出每一份，并标出与现有简历同名的，确认后才写入。</view>
+    <view class="btn-col">
+      <view class="btn" bindtap="onPickFile" hover-class="tap-hover">从聊天文件导入</view>
+      <view class="btn" bindtap="onPasteImport" hover-class="tap-hover">从剪贴板粘贴</view>
+    </view>
+  </view>
+
+  <view class="sect-title"><view class="bar-mark"></view>清空</view>
+  <view class="card group">
+    <view class="desc">删除本机全部简历草稿，需要确认两次；投递记录不受影响。</view>
+    <view class="btn-col">
+      <view class="btn btn-danger" bindtap="onClear" hover-class="tap-hover">清空全部简历</view>
+    </view>
+  </view>
+  <view class="privacy muted small">所有数据只保存在手机本地，不联网、不上传。</view>
+  <view class="safe-bottom"></view>
+</view>

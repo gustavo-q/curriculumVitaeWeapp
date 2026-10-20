@@ -325,6 +325,296 @@ function fitToOnePage(start, measure, targetHeight) {
   return { params, ok, alreadyFits: false, changes: diffParams(start, params) }
 }
 
+
+/* ================================================================== */
+/*  智能排版 v1.12（移植自参考站 src/utils/onePage.js 的 smartLayout）  */
+/*  「舒适下限 + 均衡压缩 + 多页兜底」——预览页「一页」按钮使用。      */
+/*  上面的 fitOnePageSmart / fitToOnePage（逐级贪心）保留给旧调用方。   */
+/* ================================================================== */
+
+/** A4 设计高度（px，794 × 1123 设计坐标系） */
+const A4_HEIGHT = 1123
+
+/**
+ * 舒适下限：自动压缩不得越过。
+ * 字号另有一条相对模板的约束：不低于「模板默认字号 − FONT_DROP_MAX」（见 comfortFloors）。
+ */
+const COMFORT_FLOORS = {
+  sectionSpacing: 10,
+  verticalPadding: 36,
+  horizontalPadding: 44,
+  lineHeight: 1.4,
+  fontSpacing: 0,
+  fontSize: 12.5
+}
+
+/** 字号相对模板默认值最多下调多少（px） */
+const FONT_DROP_MAX = 1.5
+
+/** 撑满方向的上限（字号另取 min(模板默认 + GROW_FONT_OVER_TEMPLATE, fontSize)） */
+const GROW_CAPS = {
+  lineHeight: 1.8,
+  fontSize: 15,
+  sectionSpacing: 28,
+  verticalPadding: 56
+}
+const GROW_FONT_OVER_TEMPLATE = 1
+
+/** 内容占到一页的这个比例以上就不再撑 */
+const GROW_TRIGGER = 0.9
+
+/** 撑满时在页底保留的余量（占页高比例） */
+const GROW_BOTTOM_RESERVE = 0.07
+
+/** 多页时末页填充低于该比例，视为「末页几乎空白」 */
+const LAST_PAGE_MIN_FILL = 0.25
+
+/** 多页且末页去不掉时「轻微放宽」的幅度（只动留白与行距，不动字号） */
+const LOOSEN_DELTA = {
+  lineHeight: 0.12,
+  sectionSpacing: 6,
+  verticalPadding: 6
+}
+
+/** 压缩曲线：t^γ；γ<1 先让（留白），γ>1 后让（字号） */
+const SHRINK_CURVE = {
+  sectionSpacing: 0.6,
+  verticalPadding: 0.75,
+  fontSpacing: 0.8,
+  lineHeight: 0.9,
+  horizontalPadding: 1.1,
+  fontSize: 1.6
+}
+
+/** 撑满曲线：字号放大得最慢 */
+const GROW_CURVE = {
+  sectionSpacing: 0.9,
+  lineHeight: 1,
+  verticalPadding: 1.2,
+  fontSize: 1.4
+}
+
+const STEP = {}
+FIT_LEVELS.forEach((l) => { STEP[l.key] = l.step })
+
+/** 模板未声明时的默认排版（与 model.js 的 STYLE_DEFAULTS 一致） */
+const DEFAULT_TEMPLATE_PARAMS = {
+  fontSize: 14,
+  lineHeight: 1.65,
+  fontSpacing: 0,
+  horizontalPadding: 48,
+  verticalPadding: 36,
+  sectionSpacing: 18
+}
+
+/** 抽出当前排版参数（非数字回落到默认值，避免 NaN 一路传染到提示文案） */
+function readFitParamsSafe (resume) {
+  const out = {}
+  for (const k of FIT_KEYS) {
+    const n = Number(resume && resume[k])
+    out[k] = Number.isFinite(n) ? n : DEFAULT_TEMPLATE_PARAMS[k]
+  }
+  return out
+}
+
+/** 模板的排版默认值（模板未声明的项回落到全局默认） */
+function templateParams (tpl) {
+  const out = {}
+  for (const k of FIT_KEYS) {
+    const n = Number(tpl && tpl[k])
+    out[k] = tpl && tpl[k] != null && Number.isFinite(n) ? n : DEFAULT_TEMPLATE_PARAMS[k]
+  }
+  return out
+}
+
+/** 自动压缩的下限：min(当前值, 舒适下限)——绝不反向放大 */
+function comfortFloors (start, tplParams) {
+  const tp = tplParams || DEFAULT_TEMPLATE_PARAMS
+  const abs = Object.assign({}, COMFORT_FLOORS)
+  abs.fontSize = Math.max(COMFORT_FLOORS.fontSize, tp.fontSize - FONT_DROP_MAX)
+  const out = {}
+  for (const k of FIT_KEYS) out[k] = alignTo(Math.min(start[k], abs[k]), STEP[k])
+  return out
+}
+
+/** 撑满的上限：max(当前值, 上限)——绝不反向缩小 */
+function growCaps (start, tplParams) {
+  const tp = tplParams || DEFAULT_TEMPLATE_PARAMS
+  const abs = {
+    lineHeight: GROW_CAPS.lineHeight,
+    sectionSpacing: GROW_CAPS.sectionSpacing,
+    verticalPadding: GROW_CAPS.verticalPadding,
+    fontSize: Math.min(GROW_CAPS.fontSize, tp.fontSize + GROW_FONT_OVER_TEMPLATE)
+  }
+  const out = Object.assign({}, start)
+  for (const k of Object.keys(abs)) out[k] = alignTo(Math.max(start[k], abs[k]), STEP[k])
+  return out
+}
+
+/** 「舒适基线」：低于舒适下限的项放宽回模板默认值，其余保持用户选择 */
+function relaxToComfort (start, tplParams) {
+  const tp = tplParams || DEFAULT_TEMPLATE_PARAMS
+  const abs = Object.assign({}, COMFORT_FLOORS)
+  abs.fontSize = Math.max(COMFORT_FLOORS.fontSize, tp.fontSize - FONT_DROP_MAX)
+  const out = Object.assign({}, start)
+  for (const k of FIT_KEYS) {
+    if (start[k] < abs[k] - 1e-9) out[k] = alignTo(Math.max(start[k], tp[k]), STEP[k])
+  }
+  return out
+}
+
+/** 在 from → to 之间按曲线插值；t=0 得 from，t=1 得 to */
+function interpolate (from, to, t, curve) {
+  const out = Object.assign({}, from)
+  for (const k of FIT_KEYS) {
+    if (Math.abs(to[k] - from[k]) < 1e-9) continue
+    const g = curve[k] == null ? 1 : curve[k]
+    const p = t <= 0 ? 0 : t >= 1 ? 1 : Math.pow(t, g)
+    out[k] = alignTo(from[k] + (to[k] - from[k]) * p, STEP[k])
+  }
+  return out
+}
+
+/** 二分：满足 ok(t) 的最小 t（前提 ok(1) 为真） */
+function searchMinT (ok, iterations) {
+  let lo = 0
+  let hi = 1
+  for (let i = 0; i < (iterations || 16); i++) {
+    const mid = (lo + hi) / 2
+    if (ok(mid)) hi = mid
+    else lo = mid
+  }
+  return hi
+}
+
+/** 二分：满足 ok(t) 的最大 t（ok(0) 为真） */
+function searchMaxT (ok, iterations) {
+  let lo = 0
+  let hi = 1
+  if (ok(1)) return 1
+  for (let i = 0; i < (iterations || 16); i++) {
+    const mid = (lo + hi) / 2
+    if (ok(mid)) lo = mid
+    else hi = mid
+  }
+  return lo
+}
+
+/** 没有分页测量函数时的估算（单元测试 / 兜底） */
+function estimatePages (height, params, pageH) {
+  const ph = pageH || A4_HEIGHT + PAGINATION_SLACK
+  const padY = params.verticalPadding || 0
+  const usable = Math.max(1, ph - 2 * padY)
+  const content = Math.max(0, height - 2 * padY)
+  const pages = Math.max(1, Math.ceil(content / usable - 1e-9))
+  const rest = content - (pages - 1) * usable
+  return { pages, lastFill: Math.min(1, Math.max(0, rest / usable)) }
+}
+
+/**
+ * 智能排版主入口（与参考站 smartLayout 同算法）。
+ *
+ * @param {object} start 当前排版参数
+ * @param {object} env  { measure(p)→高度, measurePages?(p)→{pages,lastFill}, target?, template? }
+ * @returns {{mode:'none'|'one-page'|'grow'|'multi-page', params, changes, pages, lastFill, fill,
+ *            compressed, loosened, relaxed, atCap?}}
+ */
+function smartLayout (start, env) {
+  const target = env.target == null ? A4_HEIGHT + PAGINATION_SLACK : env.target
+  const tpl = templateParams(env.template)
+  const measure = env.measure
+  const pagesOf = (p) => (env.measurePages ? env.measurePages(p) : estimatePages(measure(p), p, target))
+  const fits = (p) => measure(p) <= target
+
+  const done = (mode, params, extra) => {
+    const h = measure(params)
+    const pg = mode === 'multi-page' ? pagesOf(params) : { pages: 1, lastFill: Math.min(1, h / target) }
+    return Object.assign({
+      mode,
+      params,
+      changes: diffParams(start, params),
+      pages: pg.pages,
+      lastFill: pg.lastFill,
+      fill: Math.min(1, h / target),
+      compressed: false,
+      loosened: false,
+      relaxed: false
+    }, extra || {})
+  }
+
+  const h0 = measure(start)
+
+  /* 一页放得下：视情况适度舒展 */
+  if (h0 <= target) {
+    if (h0 >= target * GROW_TRIGGER) return done('none', Object.assign({}, start))
+    const caps = growCaps(start, tpl)
+    const growTarget = target * (1 - GROW_BOTTOM_RESERVE)
+    if (h0 >= growTarget) return done('none', Object.assign({}, start))
+    const t = searchMaxT((x) => measure(interpolate(start, caps, x, GROW_CURVE)) <= growTarget)
+    const params = interpolate(start, caps, t, GROW_CURVE)
+    if (!diffParams(start, params).length) return done('none', Object.assign({}, start), { atCap: true })
+    return done('grow', params)
+  }
+
+  /* 溢出：先在舒适下限内均衡压缩 */
+  const floors = comfortFloors(start, tpl)
+  if (fits(floors)) {
+    const t = searchMinT((x) => fits(interpolate(start, floors, x, SHRINK_CURVE)))
+    return done('one-page', interpolate(start, floors, t, SHRINK_CURVE), { compressed: true })
+  }
+
+  /* 舒适范围内放不进一页：按舒适排版分页 */
+  const base = relaxToComfort(start, tpl)
+  const relaxed = diffParams(start, base).length > 0
+  const info = pagesOf(base)
+
+  if (info.pages > 1 && info.lastFill < LAST_PAGE_MIN_FILL) {
+    const fewer = info.pages - 1
+    const floors2 = comfortFloors(base, tpl)
+    if (pagesOf(floors2).pages <= fewer) {
+      const t = searchMinT((x) => pagesOf(interpolate(base, floors2, x, SHRINK_CURVE)).pages <= fewer)
+      const params = interpolate(base, floors2, t, SHRINK_CURVE)
+      if (fewer === 1 && fits(params)) return done('one-page', params, { compressed: true, relaxed })
+      if (pagesOf(params).pages <= fewer) return done('multi-page', params, { compressed: true, relaxed })
+    }
+    const loose = Object.assign({}, base)
+    for (const k of Object.keys(LOOSEN_DELTA)) loose[k] = base[k] + LOOSEN_DELTA[k]
+    const capped = growCaps(base, tpl)
+    for (const k of Object.keys(LOOSEN_DELTA)) loose[k] = alignTo(Math.max(base[k], Math.min(loose[k], capped[k])), STEP[k])
+    const t = searchMaxT((x) => pagesOf(interpolate(base, loose, x, GROW_CURVE)).pages <= info.pages)
+    const params = interpolate(base, loose, t, GROW_CURVE)
+    if (pagesOf(params).pages <= info.pages && diffParams(base, params).length) {
+      return done('multi-page', params, { loosened: true, relaxed })
+    }
+  }
+
+  return done('multi-page', base, { relaxed })
+}
+
+/** 智能排版结果 → 给用户看的一句话（纯中文、不说「失败」） */
+function describeLayoutResult (result) {
+  const summary = describeChanges(result.changes || [])
+  const pct = Math.round((result.fill || 0) * 100)
+  switch (result.mode) {
+    case 'none':
+      if (result.atCap) return { text: '排版已经很舒展了，内容约占 ' + pct + '% 页面，下方留白属正常', kind: 'ok' }
+      return { text: '当前排版已经舒适合适，无需调整', kind: 'ok' }
+    case 'grow':
+      return { text: summary ? '已适度舒展排版：' + summary : '已适度舒展排版', kind: 'ok' }
+    case 'one-page':
+      return { text: summary ? '已舒适排成 1 页：' + summary : '已舒适排成 1 页', kind: 'ok' }
+    case 'multi-page': {
+      const head = '内容较多，已按舒适排版排成 ' + result.pages + ' 页'
+      if (result.compressed) return { text: head + '（已略收紧，去掉了几乎空白的末页）', kind: 'ok' }
+      if (result.loosened) return { text: head + '（已略放宽，让末页更饱满）', kind: 'ok' }
+      if (result.relaxed) return { text: head + '（过紧的参数已恢复到舒适值）', kind: 'ok' }
+      return { text: head, kind: 'ok' }
+    }
+    default:
+      return { text: '排版已更新', kind: 'ok' }
+  }
+}
+
 module.exports = {
   MIN_LINE_HEIGHT_RATIO,
   MIN_READABLE_FONT_SIZE,
@@ -338,5 +628,26 @@ module.exports = {
   diffParams,
   describeChanges,
   fitOnePageSmart,
-  fitToOnePage
+  fitToOnePage,
+  // v1.12 智能排版
+  A4_HEIGHT,
+  COMFORT_FLOORS,
+  FONT_DROP_MAX,
+  GROW_CAPS,
+  GROW_TRIGGER,
+  GROW_BOTTOM_RESERVE,
+  LAST_PAGE_MIN_FILL,
+  LOOSEN_DELTA,
+  SHRINK_CURVE,
+  GROW_CURVE,
+  DEFAULT_TEMPLATE_PARAMS,
+  readFitParamsSafe,
+  templateParams,
+  comfortFloors,
+  growCaps,
+  relaxToComfort,
+  interpolate,
+  estimatePages,
+  smartLayout,
+  describeLayoutResult
 }

@@ -24,6 +24,17 @@ function safeName (name) {
     .slice(0, 40) || '简历'
 }
 
+/**
+ * 带扩展名的文件名安全化：只截断主名，扩展名原样保留。
+ * （直接对 `xxx.pdf` 做 safeName 会在名字很长时把 `.pdf` 一起截掉。）
+ */
+function safeFileName (name) {
+  const s = String(name || '')
+  const m = s.match(/^(.*?)(\.[A-Za-z0-9]{1,5})$/)
+  if (!m) return safeName(s)
+  return safeName(m[1]) + m[2].toLowerCase()
+}
+
 /** 轻提示：统一 1.6 秒，避免各处时长不一 */
 function toast (title, icon) {
   wx.showToast({ title, icon: icon || 'none', duration: 1600 })
@@ -139,7 +150,7 @@ function exportBaseName (resume) {
 function writeExportFile (name, content, encoding) {
   return new Promise((resolve, reject) => {
     const dir = ensureExportDir()
-    const filePath = dir + '/' + safeName(name)
+    const filePath = dir + '/' + safeFileName(name)
     const fs = wx.getFileSystemManager()
     const done = () => resolve(filePath)
     if (typeof fs.writeFile === 'function') {
@@ -267,8 +278,74 @@ async function runExportTask (loadingTitle, task) {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/*  转发到微信聊天（wx.shareFileMessage，基础库 2.16.1+）               */
+/* ------------------------------------------------------------------ */
+
+/** 当前环境是否支持把文件发到聊天 */
+function canShareFile () {
+  return typeof wx !== 'undefined' && typeof wx.shareFileMessage === 'function'
+}
+
+/** shareFileMessage 因「不在用户点击上下文」被拒（耗时生成之后调用会撞上） */
+function isGestureError (err) {
+  const msg = String((err && err.errMsg) || (err && err.message) || err || '').toLowerCase()
+  return msg.indexOf('tap') >= 0 || msg.indexOf('gesture') >= 0 || msg.indexOf('user action') >= 0
+}
+
+/**
+ * 把本地文件发给微信好友 / 群。
+ *
+ * · 支持 shareFileMessage：直接拉起会话选择；用户取消 → cancelled 错误。
+ *   若因手势上下文失效被拒，抛出 needTap=true 的错误，调用方据此展示一个
+ *   「发送」按钮，让用户再点一次（那一次点击里同步调用即可成功）。
+ * · 不支持：PDF / Word 退回 wx.openDocument(showMenu)，用户可在右上角菜单里转发；
+ *   其他类型（JSON）无法预览，抛出 unsupported=true 的错误交给调用方兜底（复制到剪贴板）。
+ *
+ * @returns {Promise<'share'|'open'>}
+ */
+function shareFile (filePath, fileName, fileType) {
+  return new Promise((resolve, reject) => {
+    if (canShareFile()) {
+      wx.shareFileMessage({
+        filePath,
+        fileName,
+        success: () => resolve('share'),
+        fail: (e) => {
+          if (isGestureError(e)) {
+            const err = new Error('需要再点一次发送')
+            err.needTap = true
+            return reject(err)
+          }
+          if (isUserCancel(e)) return reject(cancelledError('已取消'))
+          reject(new Error((e && e.errMsg) || '发送失败'))
+        }
+      })
+      return
+    }
+    if (fileType === 'pdf' || fileType === 'doc' || fileType === 'docx') {
+      openExportedFile(filePath, fileType).then(() => resolve('open'), reject)
+      return
+    }
+    const err = new Error('当前微信版本不支持发送文件，请升级微信')
+    err.unsupported = true
+    reject(err)
+  })
+}
+
+/** JSON 备份写成文件（.json），用于发到聊天 → 电脑端导入 */
+async function buildJsonFile (jsonText, baseName) {
+  const filePath = await writeExportFile(baseName + '.json', String(jsonText || ''), 'utf8')
+  return { filePath }
+}
+
 module.exports = {
   safeName,
+  safeFileName,
+  canShareFile,
+  isGestureError,
+  shareFile,
+  buildJsonFile,
   toast,
   saveImageToAlbum,
   copyText,

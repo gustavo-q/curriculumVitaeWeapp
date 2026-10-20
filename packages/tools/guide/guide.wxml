@@ -1,0 +1,42 @@
+<nav-bar title="{{mode === 'detail' ? '攻略' : '简历攻略'}}" status-bar-height="{{statusBarHeight}}" bar-height="{{navBarHeight}}" />
+
+<!-- 详情 -->
+<view wx:if="{{mode === 'detail'}}" class="body">
+  <view class="card detail">
+    <view class="tag tag-brand">{{article.cat}} · {{article.read}}</view>
+    <view class="d-title">{{article.title}}</view>
+    <view class="lead">{{article.summary}}</view>
+    <view wx:for="{{article.blocks}}" wx:for-item="b" wx:key="h" class="block">
+      <view class="b-h">{{b.h}}</view>
+      <view wx:for="{{b.list}}" wx:for-item="li" wx:key="*this" class="li">
+        <text class="li-dot">•</text>
+        <text class="li-text" user-select="{{true}}">{{li}}</text>
+      </view>
+    </view>
+  </view>
+  <view class="btn-row acts">
+    <view class="btn" bindtap="onAll" hover-class="tap-hover">全部攻略</view>
+    <view class="btn btn-primary" bindtap="onWrite" hover-class="tap-hover">边看边写，去改简历</view>
+  </view>
+  <view class="safe-bottom"></view>
+</view>
+
+<!-- 列表 -->
+<view wx:else class="body">
+  <view class="intro muted small">命名规范、STAR 写法、关键词匹配、排版技巧与避坑清单。</view>
+  <view wx:if="{{topicMissed}}" class="missed small">「{{topicMissed}}」暂时没有专门的文章，先看看下面这些。</view>
+  <scroll-view scroll-x class="cats" enhanced show-scrollbar="{{false}}">
+    <view class="cats-inner">
+      <view wx:for="{{cats}}" wx:key="*this" class="cat {{cat === item ? 'on' : ''}}" data-cat="{{item}}" bindtap="onCat" hover-class="tap-hover">{{item}}</view>
+    </view>
+  </scroll-view>
+  <view wx:for="{{list}}" wx:key="id" class="card art" data-id="{{item.id}}" bindtap="onOpen" hover-class="card-hover">
+    <view class="art-top">
+      <text class="tag tag-brand">{{item.cat}}</text>
+      <text class="small muted">{{item.read}}</text>
+    </view>
+    <view class="art-title">{{item.title}}</view>
+    <view class="art-sum">{{item.summary}}</view>
+  </view>
+  <view class="safe-bottom"></view>
+</view>

@@ -23,6 +23,28 @@ page {
   /* 占位符/装饰性文字：允许更浅，但不承载信息 */
   --ink-4: #9aa3ae;
   --danger: #b3261e;
+
+  /* ---- 语义色（投递 / 匹配 / 备份页用；深色模式在下方整体覆盖） ---- */
+  /* 品牌色用作「文字」时的版本：浅色下就是 --brand，深色下提亮以保证对比度 */
+  --brand-ink: #1f4e79;
+  --brand-deep: #16334f;
+  --ok-ink: #1e7b45;
+  --ok-soft: rgba(30, 123, 69, 0.1);
+  --warn-ink: #9a5b00;
+  --warn-soft: rgba(196, 122, 0, 0.12);
+  --warn-line: rgba(196, 122, 0, 0.3);
+  --danger-soft: rgba(179, 38, 30, 0.08);
+  --danger-line: rgba(179, 38, 30, 0.25);
+  /* 投递状态药丸：颜色底 + 文字双通道（对应参考站 --track-* 变量） */
+  --track-applied-bg: #e6eef7;
+  --track-applied-ink: #1f4e79;
+  --track-interview-bg: #fff1d6;
+  --track-interview-ink: #8a5300;
+  --track-rejected-bg: #eceef1;
+  --track-rejected-ink: #5b6570;
+  --track-offer-bg: #dcf3e5;
+  --track-offer-ink: #1e6b3d;
+
   --font: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
 
   background: var(--bg);
@@ -302,4 +324,56 @@ view, text, scroll-view, button, input, textarea, image, label {
 .safe-bottom {
   height: env(safe-area-inset-bottom);
   flex: none;
+}
+
+/* ============================================================
+   深色模式：跟随微信 / 系统设置（设计稿：去掉手动开关）
+   ------------------------------------------------------------
+   ★ 生效前提：app.json 必须 "darkmode": true（并配 theme.json 处理
+     tabBar / window 颜色）。为 false 时微信始终按浅色上报，本段不生效、
+     也不会产生副作用。
+   只覆盖变量，不改任何组件规则：凡是走 var(--*) 的界面自动适配；
+   仍写死 #fff / #23282f 等颜色的旧页面不受影响（也不会变深）。
+   ============================================================ */
+@media (prefers-color-scheme: dark) {
+  page {
+    --brand: #3a73a8;
+    --brand-2: #4d86bb;
+    --brand-soft: rgba(110, 160, 210, 0.16);
+    --brand-ring: rgba(110, 160, 210, 0.4);
+    --brand-ink: #8dbbe8;
+    --brand-deep: #1b3550;
+    --bg: #111418;
+    --surface: #1b1f24;
+    --surface-2: #232830;
+    --line: #2c323b;
+    --line-2: #3a414c;
+    --ink: #e6e9ed;
+    --ink-2: #b4bcc6;
+    --ink-3: #9099a4;
+    --ink-4: #6c7480;
+    --danger: #f2867e;
+    --ok-ink: #6fd29a;
+    --ok-soft: rgba(111, 210, 154, 0.14);
+    --warn-ink: #f0bd62;
+    --warn-soft: rgba(240, 189, 98, 0.14);
+    --warn-line: rgba(240, 189, 98, 0.35);
+    --danger-soft: rgba(242, 134, 126, 0.14);
+    --danger-line: rgba(242, 134, 126, 0.35);
+    --track-applied-bg: rgba(110, 160, 210, 0.18);
+    --track-applied-ink: #a9cdf0;
+    --track-interview-bg: rgba(240, 189, 98, 0.18);
+    --track-interview-ink: #f3c878;
+    --track-rejected-bg: rgba(180, 188, 198, 0.14);
+    --track-rejected-ink: #b4bcc6;
+    --track-offer-bg: rgba(111, 210, 154, 0.18);
+    --track-offer-ink: #8be0af;
+  }
+
+  /* 全局规则里写死的浅色：按压反馈与卡片按压底色 */
+  .tap-hover-bg { background: rgba(255, 255, 255, 0.06); }
+  .card-hover { background: rgba(255, 255, 255, 0.04); }
+  .tag-brand { color: var(--brand-ink); border-color: var(--brand-ring); }
+  .btn-danger { border-color: var(--danger-line); }
+  .field-input, .field-textarea { color: var(--ink); }
 }

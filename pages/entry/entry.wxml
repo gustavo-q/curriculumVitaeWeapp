@@ -1,0 +1,115 @@
+<nav-bar title="{{sectionTitle || '编辑条目'}}" status-bar-height="{{statusBarHeight}}" bar-height="{{navBarHeight}}" />
+
+<view class="body">
+  <view class="pos">{{position}}</view>
+
+  <!-- ============ 排版：三张示意图 ============ -->
+  <view class="label">这一条怎么排</view>
+  <view class="layouts">
+    <view
+      wx:for="{{layouts}}"
+      wx:key="id"
+      class="layout {{type === item.id ? 'on' : ''}}"
+      data-type="{{item.id}}"
+      bindtap="onSetType"
+      hover-class="tap-hover">
+      <view class="demo demo-{{item.id}}">
+        <view wx:if="{{item.id === 'ONE'}}" class="demo-col full"><view class="bar b100"></view><view class="bar b80"></view><view class="bar b90"></view></view>
+        <block wx:if="{{item.id === 'TWO'}}">
+          <view class="demo-col"><view class="bar b100 strong"></view></view>
+          <view class="demo-col right"><view class="bar b60"></view></view>
+        </block>
+        <block wx:if="{{item.id === 'THREE'}}">
+          <view class="demo-col"><view class="bar b100 strong"></view></view>
+          <view class="demo-col mid"><view class="bar b80"></view></view>
+          <view class="demo-col right"><view class="bar b60"></view></view>
+        </block>
+      </view>
+      <text class="layout-label">{{item.label}}</text>
+    </view>
+  </view>
+  <view class="hint">{{type === 'ONE' ? layouts[0].hint : (type === 'TWO' ? layouts[1].hint : layouts[2].hint)}}</view>
+
+  <!-- ============ 标题 ============ -->
+  <view wx:if="{{showTitle}}" class="field-card">
+    <view class="label">标题</view>
+    <input
+      class="input"
+      value="{{left}}"
+      placeholder="例如：华东理工大学 / 某某科技有限公司"
+      placeholder-class="ph"
+      confirm-type="next"
+      focus="{{focusField === 'leftContent'}}"
+      data-field="leftContent"
+      bindinput="onInput"
+      bindblur="onBlur"
+      bindconfirm="onTitleNext" />
+  </view>
+
+  <!-- ============ 说明 / 内容（多行） ============ -->
+  <view wx:if="{{showDesc}}" class="field-card">
+    <view class="label">{{descLabel}}</view>
+    <textarea
+      class="textarea {{type === 'ONE' ? 'tall' : ''}}"
+      value="{{center}}"
+      placeholder="{{type === 'ONE' ? '例如：负责用户增长，三个月月活提升 30%。可换行分条写。' : '例如：计算机科学与技术 / 产品经理'}}"
+      placeholder-class="ph"
+      auto-height
+      maxlength="-1"
+      adjust-position
+      cursor-spacing="120"
+      focus="{{focusField === 'centerContent'}}"
+      data-field="centerContent"
+      bindinput="onInput"
+      bindblur="onBlur" />
+  </view>
+
+  <!-- ============ 时间 ============ -->
+  <view wx:if="{{showTime}}" class="field-card">
+    <view class="label-row">
+      <text class="label">时间</text>
+      <text class="mode-link" bindtap="onToggleTimeFree">{{timeFree ? '用滚轮选择' : '手动输入'}}</text>
+    </view>
+    <block wx:if="{{timeFree}}">
+      <input
+        class="input"
+        value="{{right}}"
+        placeholder="例如：2021.09 - 至今"
+        placeholder-class="ph"
+        confirm-type="done"
+        focus="{{focusField === 'rightContent'}}"
+        data-field="rightContent"
+        bindinput="onInput"
+        bindblur="onBlur" />
+    </block>
+    <block wx:else>
+      <view class="time-row">
+        <picker class="time-pick" mode="date" fields="month" value="{{start}}" start="1970-01" end="{{maxMonth}}" bindchange="onStart">
+          <view class="time-box {{start ? '' : 'ph'}}">
+            <text class="time-cap">开始</text>
+            <text class="time-val">{{start || '选择年月'}}</text>
+          </view>
+        </picker>
+        <text class="time-dash">—</text>
+        <picker class="time-pick" mode="date" fields="month" value="{{end}}" start="{{start || '1970-01'}}" end="{{maxMonth}}" bindchange="onEnd" disabled="{{present || !start}}">
+          <view class="time-box {{end || present ? '' : 'ph'}}">
+            <text class="time-cap">结束</text>
+            <text class="time-val">{{present ? '至今' : (end || '选择年月')}}</text>
+          </view>
+        </picker>
+      </view>
+      <view class="time-foot">
+        <view class="chip {{present ? 'on' : ''}}" bindtap="onTogglePresent" hover-class="tap-hover">至今</view>
+        <text class="time-preview">{{right ? '简历上显示：' + right : '先选开始时间'}}</text>
+        <text wx:if="{{right}}" class="clear" bindtap="onClearTime">清空</text>
+      </view>
+    </block>
+  </view>
+
+  <view class="body-end"></view>
+</view>
+
+<view class="foot">
+  <view class="btn btn-danger foot-del" bindtap="onDelete" hover-class="tap-hover">删除此条目</view>
+  <view class="btn btn-primary foot-done" bindtap="onDone" hover-class="tap-hover">完成</view>
+</view>

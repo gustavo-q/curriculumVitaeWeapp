@@ -1,0 +1,91 @@
+<nav-bar title="{{isEdit ? '投递详情' : '记一笔投递'}}" status-bar-height="{{statusBarHeight}}" bar-height="{{navBarHeight}}" />
+
+<view class="body">
+  <view wx:if="{{fromMatch}}" class="tip">已从 JD 匹配带入公司、岗位和简历，猜得不准就直接改。</view>
+
+  <view class="card group">
+    <view class="field">
+      <text class="field-label">公司 <text class="req">*</text></text>
+      <input class="field-input" value="{{form.company}}" data-k="company" bindinput="onInput" placeholder="例如：某某科技有限公司" maxlength="40" confirm-type="next" />
+    </view>
+    <view class="field">
+      <text class="field-label">岗位 <text class="req">*</text></text>
+      <input class="field-input" value="{{form.role}}" data-k="role" bindinput="onInput" placeholder="例如：前端开发工程师" maxlength="40" />
+    </view>
+    <view class="field">
+      <text class="field-label">渠道 / 链接</text>
+      <view class="row gap12">
+        <input class="field-input grow" value="{{form.link}}" data-k="link" bindinput="onInput" placeholder="BOSS 直聘、内推、官网链接…" maxlength="500" />
+        <view class="btn btn-sm paste" bindtap="onPasteLink" hover-class="tap-hover">粘贴</view>
+      </view>
+    </view>
+    <view class="field">
+      <text class="field-label">所用简历</text>
+      <picker mode="selector" range="{{resumeNames}}" value="{{resumeIndex}}" bindchange="onResume">
+        <view class="field-input picker-line">
+          <text class="ellipsis grow">{{resumeNames[resumeIndex]}}</text>
+          <text class="caret">›</text>
+        </view>
+      </picker>
+    </view>
+  </view>
+
+  <view class="card group">
+    <text class="field-label">状态</text>
+    <view class="status-row">
+      <view wx:for="{{statuses}}" wx:key="id" class="status-opt pill-{{item.id}} {{form.status === item.id ? 'on' : ''}}" data-id="{{item.id}}" bindtap="onStatus" hover-class="tap-hover">{{item.label}}</view>
+    </view>
+    <view class="field mt">
+      <text class="field-label">投递日期</text>
+      <picker mode="date" value="{{form.appliedAt}}" end="{{today}}" bindchange="onAppliedAt">
+        <view class="field-input picker-line">
+          <text class="grow">{{form.appliedAt}}</text>
+          <text class="caret">›</text>
+        </view>
+      </picker>
+    </view>
+    <view class="field">
+      <view class="row label-row">
+        <text class="field-label grow">面试时间</text>
+        <text wx:if="{{form.ivDate}}" class="clear-link" bindtap="onClearIv" hover-class="tap-hover">清除</text>
+      </view>
+      <view class="row gap12">
+        <picker class="grow" mode="date" value="{{form.ivDate || today}}" start="{{form.appliedAt}}" bindchange="onIvDate">
+          <view class="field-input picker-line">
+            <text class="grow {{form.ivDate ? '' : 'ph'}}">{{form.ivDate || '选择日期'}}</text>
+          </view>
+        </picker>
+        <picker class="time-pick" mode="time" value="{{form.ivTime || '10:00'}}" bindchange="onIvTime">
+          <view class="field-input picker-line">
+            <text class="grow {{form.ivTime ? '' : 'ph'}}">{{form.ivTime || '时间'}}</text>
+          </view>
+        </picker>
+      </view>
+      <view class="btn btn-sm cal-btn {{form.ivDate ? '' : 'btn-disabled'}}" bindtap="onAddCalendar" hover-class="tap-hover">
+        {{canCalendar ? '加到手机日历（提前 1 小时提醒）' : '复制面试信息'}}
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{form.jdKeywords.length}}" class="card group">
+    <text class="field-label">岗位关键词（来自 JD 匹配，面试前可以对照准备）</text>
+    <view class="kw-wrap">
+      <view wx:for="{{form.jdKeywords}}" wx:key="*this" class="kw" data-w="{{item}}" bindtap="onRemoveKw" hover-class="tap-hover">{{item}} <text class="kw-x">×</text></view>
+    </view>
+  </view>
+
+  <view class="card group">
+    <text class="field-label">备注</text>
+    <textarea class="field-textarea" value="{{form.note}}" data-k="note" bindinput="onInput" placeholder="面试官、薪资范围、HR 联系方式、复盘…" maxlength="2000" auto-height />
+  </view>
+
+  <view class="bottom-space"></view>
+</view>
+
+<view class="bar">
+  <view class="btn-row">
+    <view wx:if="{{isEdit}}" class="btn btn-danger del" bindtap="onDelete" hover-class="tap-hover">删除</view>
+    <view class="btn btn-primary" bindtap="onSave" hover-class="tap-hover">{{isEdit ? '保存' : '记一笔'}}</view>
+  </view>
+  <view class="safe-bottom"></view>
+</view>
