@@ -1,0 +1,70 @@
+.body { padding: 20rpx 24rpx 0; }
+
+.tip {
+  margin-bottom: 20rpx;
+  padding: 18rpx 24rpx;
+  border-radius: 12rpx;
+  background: var(--brand-soft);
+  color: var(--brand-ink);
+  font-size: 25rpx;
+}
+
+.group { padding: 28rpx 28rpx 12rpx; margin-bottom: 20rpx; }
+.req { color: var(--danger); }
+.mt { margin-top: 24rpx; }
+
+/* 输入框统一 ≥ 88rpx 高，手指好点 */
+.field-input { min-height: 88rpx; color: var(--ink); }
+.field-textarea { color: var(--ink); min-height: 180rpx; margin-bottom: 16rpx; }
+.picker-line { display: flex; align-items: center; }
+.caret { color: var(--ink-4); font-size: 32rpx; margin-left: 8rpx; }
+.ph { color: var(--ink-4); }
+.paste { flex: none; min-height: 88rpx; }
+.time-pick { width: 200rpx; flex: none; }
+.label-row { margin-bottom: 0; }
+.clear-link { font-size: 24rpx; color: var(--ink-3); padding: 0 0 8rpx 20rpx; }
+
+.status-row { display: flex; gap: 12rpx; margin-top: 4rpx; }
+.status-opt {
+  flex: 1 1 0;
+  min-height: 80rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  border: 2px solid transparent;
+  opacity: 0.55;
+}
+.status-opt.on { opacity: 1; border-color: currentColor; }
+.pill-applied { background: var(--track-applied-bg); color: var(--track-applied-ink); }
+.pill-interviewing { background: var(--track-interview-bg); color: var(--track-interview-ink); }
+.pill-rejected { background: var(--track-rejected-bg); color: var(--track-rejected-ink); }
+.pill-offer { background: var(--track-offer-bg); color: var(--track-offer-ink); }
+
+.cal-btn { margin-top: 16rpx; color: var(--brand-ink); }
+
+.kw-wrap { display: flex; flex-wrap: wrap; gap: 12rpx; padding-bottom: 16rpx; }
+.kw {
+  padding: 8rpx 18rpx;
+  border-radius: 24rpx;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font-size: 24rpx;
+  color: var(--ink-2);
+}
+.kw-x { color: var(--ink-4); margin-left: 4rpx; }
+
+.bottom-space { height: 200rpx; }
+.bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  padding: 16rpx 24rpx;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+}
+.del { flex: 0 0 200rpx !important; }

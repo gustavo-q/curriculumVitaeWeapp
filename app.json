@@ -1,10 +1,36 @@
 {
   "pages": [
-    "pages/index/index",
+    "pages/home/home",
+    "pages/track/track",
+    "pages/mine/mine",
     "pages/edit/edit",
+    "pages/entry/entry",
     "pages/preview/preview",
-    "pages/templates/templates"
+    "pages/track-edit/track-edit"
   ],
+  "subpackages": [
+    {
+      "root": "packages/tools",
+      "name": "tools",
+      "pages": [
+        "templates/templates",
+        "match/match",
+        "guide/guide",
+        "backup/backup"
+      ]
+    }
+  ],
+  "tabBar": {
+    "color": "#6b7280",
+    "selectedColor": "#1f4e79",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "white",
+    "list": [
+      { "pagePath": "pages/home/home", "text": "简历" },
+      { "pagePath": "pages/track/track", "text": "投递" },
+      { "pagePath": "pages/mine/mine", "text": "我的" }
+    ]
+  },
   "window": {
     "navigationStyle": "custom",
     "backgroundTextStyle": "light",
@@ -13,6 +39,7 @@
     "navigationBarTextStyle": "white",
     "backgroundColor": "#eef1f5"
   },
+  "darkmode": false,
   "style": "v2",
   "lazyCodeLoading": "requiredComponents",
   "sitemapLocation": "sitemap.json"

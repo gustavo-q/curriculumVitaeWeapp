@@ -62,11 +62,13 @@ const allFiles = walk(ROOT, []).filter((f) => !f.includes('/.work/') && !f.inclu
 
 for (const f of allFiles.filter((x) => x.endsWith('.js'))) {
   const rel = path.relative(ROOT, f)
-  if (!rel.startsWith('pages/') && !rel.startsWith('components/') && !rel.startsWith('utils/')) continue
+  // packages/ 是分包（tools：模板库 / JD 匹配 / 攻略 / 备份），与主包同样检查
+  if (!rel.startsWith('pages/') && !rel.startsWith('components/') && !rel.startsWith('utils/') && !rel.startsWith('packages/')) continue
   delete require.cache[require.resolve(f)]
+  pageObj = null
   try {
     require(f)
-    if (rel.startsWith('pages/')) pages.push({ rel, file: f, obj: pageObj })
+    if (rel.startsWith('pages/') || (rel.startsWith('packages/') && pageObj)) pages.push({ rel, file: f, obj: pageObj })
     if (rel.startsWith('components/')) components.push({ rel, file: f, obj: compObj })
   } catch (e) {
     log('ERR', rel + ' 加载失败：' + e.message)
@@ -77,13 +79,19 @@ console.log('  · 页面 ' + pages.length + ' 个，组件 ' + components.length
 /* ---------------- 2. app.json 页面齐全 ---------------- */
 console.log('\n[2] app.json 页面登记')
 const appJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'app.json'), 'utf8'))
-for (const p of appJson.pages) {
+// 分包页面按「root/页面」展开后与主包页面一起检查
+const subPages = []
+for (const sp of appJson.subpackages || appJson.subPackages || []) {
+  for (const p of sp.pages || []) subPages.push(sp.root.replace(/\/$/, '') + '/' + p)
+}
+const allPages = appJson.pages.concat(subPages)
+for (const p of allPages) {
   const base = path.join(ROOT, p)
   for (const ext of ['.js', '.wxml', '.json']) {
     if (!fs.existsSync(base + ext)) log('ERR', p + ext + ' 缺失')
   }
 }
-log('OK', appJson.pages.length + ' 个页面文件齐全')
+log('OK', allPages.length + ' 个页面（含分包 ' + subPages.length + ' 个）文件检查完成')
 
 /* ---------------- 3/4/5. WXML 检查 ---------------- */
 console.log('\n[3] WXML 事件绑定与组件声明')
@@ -155,7 +163,7 @@ function checkWxml (wxmlPath, jsObj, jsonPath, label) {
   }
 }
 
-for (const p of appJson.pages) {
+for (const p of allPages) {
   const wxml = path.join(ROOT, p + '.wxml')
   if (!fs.existsSync(wxml)) continue
   const page = pages.find((x) => x.file === path.join(ROOT, p + '.js'))

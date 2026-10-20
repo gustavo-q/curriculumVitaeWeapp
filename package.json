@@ -1,20 +1,22 @@
 {
   "name": "curriculum-vitae-weapp",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "简历制作 · 微信小程序（参考 curriculumVitae 网站实现）",
   "scripts": {
     "check": "node tools/check-static.cjs",
     "check:package": "node tools/check-package.cjs",
-    "check:logic": "node tools/check-logic.cjs",
     "check:geometry": "node tools/check-geometry.cjs",
     "check:layout": "node tools/check-editlayout.cjs",
     "check:indexlayout": "node tools/check-indexlayout.cjs",
     "check:pdf": "node tools/check-pdf.cjs",
     "check:export": "node tools/diag-export-overflow.cjs",
-    "check:all": "node tools/check-static.cjs && node tools/check-package.cjs && node tools/check-logic.cjs && node tools/check-pdf.cjs && node tools/diag-export-overflow.cjs && node tools/check-geometry.cjs && node tools/check-editlayout.cjs && node tools/check-indexlayout.cjs",
+    "check:all": "node tools/check-static.cjs && node tools/check-package.cjs && node tools/check-core.cjs && node tools/check-preview.cjs && node tools/check-tools.cjs && node tools/check-pdf.cjs",
     "preview": "node tools/build-preview.cjs",
-    "shot": "node tools/shot-edit.cjs"
+    "shot": "node tools/shot-edit.cjs",
+    "check:core": "node tools/check-core.cjs",
+    "check:preview": "node tools/check-preview.cjs",
+    "check:tools": "node tools/check-tools.cjs"
   },
   "comment": "tools/ 与 .work/ 是开发期产物，已通过 project.config.json 的 packOptions 排除，不会进入小程序代码包",
   "devDependencies": {}

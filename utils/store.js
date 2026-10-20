@@ -75,7 +75,10 @@ const state = {
   _index: 0,
   _textOpen: false,
   _historyType: 'other',
-  _undoLoading: false
+  _undoLoading: false,
+
+  /** 跨页「已删除 · 撤销」信号，见 markDeleted() */
+  undoHint: null
 }
 
 /* ---------------- 订阅：任何变更都通知所有页面刷新 ---------------- */
@@ -235,8 +238,24 @@ function save (silent) {
   state.resume.updateDatetime = Date.now()
   const snap = clone(state.resume)
   const i = state.drafts.findIndex((d) => d.id === snap.id)
-  if (i >= 0) state.drafts[i] = snap
-  else state.drafts.unshift(snap)
+  if (i >= 0) {
+    /*
+     * 归档元数据以草稿列表里那份为准（与参考站 save() 同口径）：
+     * 内容保存不得改变归档状态，归档 / 恢复只走 archive()/unarchive()。
+     * 否则撤销回到「归档前」的快照再自动保存，会把归档悄悄抹掉。
+     */
+    const persisted = state.drafts[i]
+    if (persisted && persisted.archived === true) {
+      snap.archived = true
+      snap.archivedAt = persisted.archivedAt
+    } else {
+      delete snap.archived
+      delete snap.archivedAt
+    }
+    state.drafts[i] = snap
+  } else {
+    state.drafts.unshift(snap)
+  }
   /*
    * 落盘失败必须如实反映，不能「看起来已保存」。
    *
@@ -300,6 +319,9 @@ function duplicate (id) {
   const copy = normalizeResume(clone(src))
   copy.id = 'r_' + Date.now().toString(36)
   copy.resumeName = (copy.resumeName || '未命名简历') + ' 副本'
+  // 副本一律是未归档的新简历（参考站审查 L3）
+  delete copy.archived
+  delete copy.archivedAt
   copy.updateDatetime = Date.now()
   state.drafts.unshift(copy)
   writeDrafts(state.drafts)
@@ -412,8 +434,9 @@ function setStyle (key, value) {
 
 function addSection (title, type) {
   snapshot()
+  const id = nextId()
   state.resume.sections.push({
-    id: nextId(),
+    id,
     title: title || '自定义区块',
     visible: true,
     items: [
@@ -421,13 +444,16 @@ function addSection (title, type) {
     ]
   })
   save()
+  return id
 }
 
 function removeSection (id) {
   snapshot()
   const i = state.resume.sections.findIndex((s) => s.id === id)
-  if (i >= 0) state.resume.sections.splice(i, 1)
+  if (i < 0) return false
+  state.resume.sections.splice(i, 1)
   save()
+  return true
 }
 
 function moveSection (id, dir) {
@@ -481,8 +507,10 @@ function addItem (sectionId, type) {
   snapshot()
   const s = state.resume.sections.find((x) => x.id === sectionId)
   if (!s) return
-  s.items.push({ id: nextId(), type: type || 'THREE', leftContent: '', centerContent: '', rightContent: '' })
+  const id = nextId()
+  s.items.push({ id, type: type || 'THREE', leftContent: '', centerContent: '', rightContent: '' })
   save()
+  return id
 }
 
 function removeItem (sectionId, itemId) {
@@ -490,8 +518,10 @@ function removeItem (sectionId, itemId) {
   const s = state.resume.sections.find((x) => x.id === sectionId)
   if (!s) return
   const i = s.items.findIndex((x) => x.id === itemId)
-  if (i >= 0) s.items.splice(i, 1)
+  if (i < 0) return false
+  s.items.splice(i, 1)
   save()
+  return true
 }
 
 function moveItem (sectionId, itemId, dir) {
@@ -601,6 +631,283 @@ function clearAll () {
   emit()
 }
 
+
+/* ================================================================== */
+/*  手机端重做（v1）新增：草稿列表管理 / 导入 / 跨简历复制 / 条目工具      */
+/* ================================================================== */
+
+/** 未归档草稿（首页卡片）与已归档草稿；字段缺失一律按未归档（参考站同口径） */
+const activeDrafts = () => state.drafts.filter((d) => d && d.archived !== true)
+const archivedDrafts = () => state.drafts.filter((d) => d && d.archived === true)
+
+/**
+ * 归档 / 恢复。只改草稿对象自身的 archived / archivedAt，
+ * 不刷新 updateDatetime、不进撤销栈（列表级元数据，与参考站 archiveDraft 一致）。
+ * 恢复时删除字段而不是置 false，导出的 JSON 与参考站逐字段一致。
+ */
+function setArchived (id, archived) {
+  const d = state.drafts.find((x) => x.id === id)
+  if (!d) return false
+  const next = !!archived
+  if (!!d.archived === next) return false
+  if (next) {
+    d.archived = true
+    d.archivedAt = Date.now()
+  } else {
+    delete d.archived
+    delete d.archivedAt
+  }
+  if (state.resume.id === id) {
+    if (next) {
+      state.resume.archived = true
+      state.resume.archivedAt = d.archivedAt
+    } else {
+      delete state.resume.archived
+      delete state.resume.archivedAt
+    }
+    // 元数据变化不算「未保存的内容改动」
+    if (!state.dirty) state.lastSavedJSON = contentJson(state.resume)
+  }
+  writeDrafts(state.drafts)
+  emit()
+  return true
+}
+const archive = (id) => setArchived(id, true)
+const unarchive = (id) => setArchived(id, false)
+
+/** 按 id 重命名草稿（首页就地改名）。空白名称拒绝；改的是当前简历时同步内存副本 */
+function renameDraft (id, name) {
+  const t = String(name == null ? '' : name).trim()
+  if (!t) return false
+  const d = state.drafts.find((x) => x.id === id)
+  if (!d || d.resumeName === t) return false
+  d.resumeName = t
+  d.updateDatetime = Date.now()
+  writeDrafts(state.drafts)
+  if (state.resume.id === id) {
+    const wasDirty = state.dirty
+    state.resume.resumeName = t
+    state.resume.updateDatetime = d.updateDatetime
+    if (!wasDirty) {
+      state.savedAt = d.updateDatetime
+      state.lastSavedJSON = contentJson(state.resume)
+      state.dirty = false
+    } else {
+      refreshDirty()
+    }
+  }
+  emit()
+  return true
+}
+
+/**
+ * 子集内排序：在 drafts 全数组里找出 archived === flag 的子集，把 id 移到子集下标 toIndex，
+ * 另一子集的槽位原样不动。与参考站 moveWithinSubset 同语义：不刷新时间、不进撤销栈。
+ */
+function moveWithinSubset (id, toIndex, archivedFlag) {
+  const list = state.drafts
+  const from = list.findIndex((d) => d.id === id)
+  if (from < 0) return false
+  if (Boolean(list[from].archived) !== archivedFlag) return false
+  const slots = []
+  const sub = []
+  list.forEach((d, i) => {
+    if (Boolean(d.archived) === archivedFlag) {
+      slots.push(i)
+      sub.push(d)
+    }
+  })
+  const fromSub = sub.findIndex((d) => d.id === id)
+  const to = Math.max(0, Math.min(sub.length - 1, Math.floor(Number(toIndex) || 0)))
+  if (fromSub === to) return false
+  const moved = sub.splice(fromSub, 1)[0]
+  sub.splice(to, 0, moved)
+  slots.forEach((slot, k) => { list[slot] = sub[k] })
+  writeDrafts(list)
+  emit()
+  return true
+}
+const moveDraft = (id, toIndex) => moveWithinSubset(id, toIndex, false)
+const moveArchived = (id, toIndex) => moveWithinSubset(id, toIndex, true)
+
+/** 导入查重：resumeName trim 后完全相同即重复（与参考站 importDedup.dedupByName 同口径） */
+function dedupByName (incoming, existing) {
+  const inArr = Array.isArray(incoming) ? incoming : []
+  const exArr = Array.isArray(existing) ? existing : []
+  const names = new Set(exArr.map((d) => String((d && d.resumeName) || '').trim()).filter(Boolean))
+  const dupNames = []
+  let dupCount = 0
+  inArr.forEach((d) => {
+    const n = String((d && d.resumeName) || '').trim()
+    if (n && names.has(n)) {
+      dupCount++
+      if (dupNames.indexOf(n) < 0) dupNames.push(n)
+    }
+  })
+  return { dupCount, dupNames, total: inArr.length }
+}
+
+const MAX_IMPORT = 50
+
+/**
+ * 解析导入文件文本。接受：
+ *   · 单份简历对象（参考站「导出 JSON」）
+ *   · 简历数组（参考站「备份全部」= JSON.stringify(drafts)）
+ *   · { drafts: [...] } / { resumes: [...] } 包装（防御性兼容）
+ * 返回 { ok, kind: 'single'|'backup', list, dup, error }；list 已 normalize，尚未分配新 id。
+ */
+function parseImport (text, existing) {
+  let data
+  try {
+    data = JSON.parse(String(text == null ? '' : text).replace(/^\uFEFF/, ''))
+  } catch (e) {
+    return { ok: false, error: '文件不是有效的 JSON' }
+  }
+  let kind = 'single'
+  let arr
+  if (Array.isArray(data)) {
+    kind = 'backup'
+    arr = data
+  } else if (data && typeof data === 'object' && Array.isArray(data.drafts)) {
+    kind = 'backup'
+    arr = data.drafts
+  } else if (data && typeof data === 'object' && Array.isArray(data.resumes)) {
+    kind = 'backup'
+    arr = data.resumes
+  } else {
+    arr = [data]
+  }
+  if (!arr.length) return { ok: false, error: '文件里没有简历' }
+  const bad = arr.some((d) => !d || typeof d !== 'object' || Array.isArray(d) || (!('sections' in d) && !('baseInfo' in d)))
+  if (bad) return { ok: false, error: '文件格式不正确，不是简历数据' }
+  if (arr.length > MAX_IMPORT) return { ok: false, error: '单次最多导入 ' + MAX_IMPORT + ' 份' }
+  const list = arr.map((d) => normalizeResume(d))
+  return { ok: true, kind, list, dup: dedupByName(list, existing || state.drafts) }
+}
+
+/**
+ * 把解析好的简历写进草稿列表（按原顺序插到最前面），每份分配新 id。
+ * opts.skipDuplicates：跳过与现有草稿同名的
+ * opts.keepArchived：保留 archived 标记（「备份全部」恢复时为 true；单份导入一律未归档）
+ * 不切换当前编辑的简历。返回 { added, skipped, ids }。
+ */
+function importDrafts (list, opts) {
+  const o = opts || {}
+  const arr = Array.isArray(list) ? list : [list]
+  const names = new Set(state.drafts.map((d) => String(d.resumeName || '').trim()).filter(Boolean))
+  const out = []
+  let skipped = 0
+  arr.forEach((raw) => {
+    const r = normalizeResume(clone(raw))
+    const n = String(r.resumeName || '').trim()
+    if (o.skipDuplicates && n && names.has(n)) {
+      skipped++
+      return
+    }
+    r.id = 'r_' + nextId()
+    if (!o.keepArchived || r.archived !== true) {
+      delete r.archived
+      delete r.archivedAt
+    }
+    if (!r.updateDatetime) r.updateDatetime = Date.now()
+    out.push(r)
+  })
+  if (out.length) {
+    const prev = state.drafts
+    state.drafts = out.concat(state.drafts)
+    if (!writeDrafts(state.drafts)) {
+      state.drafts = prev
+      return { added: 0, skipped, ids: [], error: '存储空间不足，导入失败' }
+    }
+    emit()
+  }
+  return { added: out.length, skipped, ids: out.map((r) => r.id) }
+}
+
+const cloneItemFresh = (it) => ({
+  id: nextId(),
+  type: it.type || 'THREE',
+  leftContent: it.leftContent || '',
+  centerContent: it.centerContent || '',
+  rightContent: it.rightContent || ''
+})
+
+/**
+ * 从另一份草稿复制区块 / 条目到当前简历（替代参考站的对照参考面板）。
+ *   itemIds 省略：复制整个区块；给出时只复制这些条目（保持源顺序）
+ *   targetSectionId 给出：条目追加进当前简历的这个区块；否则新建同名区块放到末尾
+ * 复制品全部换新 id，进撤销栈。返回 { sectionId, count } 或 null。
+ */
+function copySectionFrom (draftId, sectionId, itemIds, targetSectionId) {
+  const src = draftId === state.resume.id ? state.resume : state.drafts.find((d) => d.id === draftId)
+  if (!src) return null
+  const sec = (src.sections || []).find((s) => s.id === sectionId)
+  if (!sec) return null
+  const pick = Array.isArray(itemIds) && itemIds.length
+    ? (sec.items || []).filter((it) => itemIds.indexOf(it.id) >= 0)
+    : (sec.items || [])
+  const items = pick.map(cloneItemFresh)
+  if (!items.length && Array.isArray(itemIds) && itemIds.length) return null
+  snapshot()
+  let targetId = targetSectionId
+  const target = targetId ? state.resume.sections.find((s) => s.id === targetId) : null
+  if (target) {
+    items.forEach((it) => target.items.push(it))
+  } else {
+    targetId = nextId()
+    state.resume.sections.push({ id: targetId, title: sec.title || '未命名区块', visible: true, items })
+  }
+  save()
+  return { sectionId: targetId, count: items.length }
+}
+
+function getSection (sectionId) {
+  return state.resume.sections.find((x) => x.id === sectionId) || null
+}
+
+function getItem (sectionId, itemId) {
+  const s = getSection(sectionId)
+  return (s && s.items.find((x) => x.id === itemId)) || null
+}
+
+/**
+ * 一次写入条目的多个字段并记一个历史点。
+ * opts.text=true：来自连续键入，与紧接着的同类改动合并成一步撤销（同参考站 typingIfEditing）。
+ */
+function updateItem (sectionId, itemId, patch, opts) {
+  const it = getItem(sectionId, itemId)
+  if (!it || !patch) return false
+  let changed = false
+  Object.keys(patch).forEach((k) => {
+    if (it[k] !== patch[k]) {
+      it[k] = patch[k]
+      changed = true
+    }
+  })
+  if (!changed) return false
+  typingIfEditing(!!(opts && opts.text))
+  snapshot()
+  refreshDirty()
+  emit()
+  return true
+}
+
+/**
+ * 「已删除 · 撤销」提示条的跨页信号：条目子页删除后返回编辑器，
+ * 由编辑器 onShow 取走并显示撤销条（子页本身已经关闭，没法自己显示）。
+ */
+function markDeleted (label) {
+  state.undoHint = { label: label || '已删除', at: Date.now() }
+}
+
+function takeUndoHint (maxAgeMs) {
+  const h = state.undoHint
+  state.undoHint = null
+  if (!h) return null
+  if (Date.now() - h.at > (maxAgeMs || 6000)) return null
+  return h
+}
+
 module.exports = {
   state,
   subscribe,
@@ -643,5 +950,24 @@ module.exports = {
   exportJSON,
   exportAllDraftsJSON,
   clearAll,
-  cloneResume
+  cloneResume,
+  /* v1 手机端新增 */
+  activeDrafts,
+  archivedDrafts,
+  archive,
+  unarchive,
+  setArchived,
+  renameDraft,
+  moveDraft,
+  moveArchived,
+  dedupByName,
+  parseImport,
+  importDrafts,
+  copySectionFrom,
+  getSection,
+  getItem,
+  updateItem,
+  markDeleted,
+  takeUndoHint,
+  MAX_IMPORT
 }

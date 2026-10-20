@@ -1,0 +1,107 @@
+<nav-bar title="我的简历" back="{{false}}" status-bar-height="{{statusBarHeight}}" bar-height="{{navBarHeight}}" />
+
+<scroll-view class="body" scroll-y="{{scrollEnabled}}">
+  <!-- ============ 空态 ============ -->
+  <view wx:if="{{!total}}" class="empty">
+    <view class="empty-paper">
+      <view class="empty-line w60"></view>
+      <view class="empty-line w90"></view>
+      <view class="empty-line w80"></view>
+      <view class="empty-line w40"></view>
+    </view>
+    <view class="empty-title">还没有简历</view>
+    <view class="empty-desc">从示例开始改最快，所有内容只保存在本机。</view>
+    <view class="btn btn-primary empty-btn" bindtap="onFab" hover-class="tap-hover">＋ 新建简历</view>
+  </view>
+
+  <block wx:else>
+    <view class="list-head">
+      <text class="list-count">{{cards.length}} 份简历</text>
+      <text class="list-hint">点标题改名 · 左滑更多 · 长按拖动排序</text>
+    </view>
+
+    <view wx:if="{{!cards.length}}" class="all-archived card">全部简历都已归档，可在下方展开找回，或点 ＋ 新建。</view>
+
+    <!-- ============ 草稿卡片 ============ -->
+    <view
+      wx:for="{{cards}}"
+      wx:key="id"
+      class="draft-card {{dragId === item.id ? 'dragging' : ''}} {{dragId && dropIndex === index && dragId !== item.id ? 'drop-target' : ''}}"
+      style="transform:translateY({{item.offsetY}}rpx);z-index:{{dragId === item.id ? 5 : 1}}">
+      <view class="acts acts-3">
+        <view class="act act-copy" data-id="{{item.id}}" catchtap="onDuplicate">复制</view>
+        <view class="act act-archive" data-id="{{item.id}}" catchtap="onArchive">归档</view>
+        <view class="act act-del" data-id="{{item.id}}" catchtap="onDelete">删除</view>
+      </view>
+      <view
+        class="face {{movingId === item.id ? 'moving' : ''}}"
+        style="transform:translateX({{item.offsetX}}rpx)"
+        data-id="{{item.id}}"
+        data-kind="active"
+        bindtouchstart="onTouchStart"
+        bindtouchmove="onTouchMove"
+        bindtouchend="onTouchEnd"
+        bindtouchcancel="onTouchCancel">
+        <view class="thumb">
+          <view class="thumb-scale" style="transform:translateX(-50%) scale({{thumbScale}})">
+            <resume-paper vm="{{item.vm}}" />
+          </view>
+        </view>
+        <view class="meta">
+          <input
+            wx:if="{{renamingId === item.id}}"
+            class="rename-input"
+            value="{{renameValue}}"
+            focus="{{true}}"
+            confirm-type="done"
+            maxlength="40"
+            bindinput="onRenameInput"
+            bindconfirm="onRenameDone"
+            bindblur="onRenameDone" />
+          <view wx:else class="meta-title" data-role="title">{{item.name}}<text class="pen" data-role="title"> ✎</text></view>
+          <view class="meta-sub">
+            <text class="tag tag-brand">{{item.templateName}}</text>
+            <text wx:if="{{item.isCurrent}}" class="tag">最近编辑</text>
+          </view>
+          <view class="meta-time">{{item.sectionCount}} 个区块 · {{item.time}}</view>
+          <view class="meta-open">编辑 ›</view>
+        </view>
+      </view>
+    </view>
+
+    <!-- ============ 已归档 ============ -->
+    <view wx:if="{{archived.length}}" class="arch-head" bindtap="onToggleArchived" hover-class="tap-hover-bg">
+      <text class="arch-caret {{archivedOpen ? 'open' : ''}}">›</text>
+      <text class="arch-title">已归档 {{archived.length}}</text>
+      <text class="arch-tip">{{archivedOpen ? '收起' : '展开'}}</text>
+    </view>
+    <view wx:if="{{archivedOpen}}" class="arch-list">
+      <view wx:for="{{archived}}" wx:key="id" class="arch-row">
+        <view class="acts acts-2">
+          <view class="act act-copy" data-id="{{item.id}}" catchtap="onUnarchive">恢复</view>
+          <view class="act act-del" data-id="{{item.id}}" catchtap="onDelete">删除</view>
+        </view>
+        <view
+          class="arch-face {{movingId === item.id ? 'moving' : ''}}"
+          style="transform:translateX({{item.offsetX}}rpx)"
+          data-id="{{item.id}}"
+          data-kind="archived"
+          bindtouchstart="onTouchStart"
+          bindtouchmove="onTouchMove"
+          bindtouchend="onTouchEnd"
+          bindtouchcancel="onTouchCancel">
+          <view class="arch-icon">档</view>
+          <view class="grow">
+            <view class="arch-name ellipsis">{{item.name}}</view>
+            <view class="arch-time">归档于 {{item.time}}</view>
+          </view>
+          <text class="arch-hint">左滑恢复</text>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <view class="bottom-space"></view>
+</scroll-view>
+
+<view wx:if="{{total}}" class="fab" bindtap="onFab" hover-class="fab-hover">＋</view>
